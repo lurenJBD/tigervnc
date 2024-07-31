@@ -53,6 +53,7 @@
 
 #ifdef WIN32
 #include "win32.h"
+#include "Win32AudioOutput.h"
 #endif
 
 using namespace rfb;
@@ -73,7 +74,11 @@ static const PixelFormat mediumColourPF(8, 8, false, true,
 static const unsigned bpsEstimateWindow = 1000;
 
 CConn::CConn(const char* vncServerName, network::Socket* socket=nullptr)
-  : serverPort(0), desktop(nullptr), updateCount(0), pixelCount(0),
+  : serverPort(0), desktop(nullptr),
+#ifdef WIN32
+    win32AudioOutput(NULL),
+#endif
+    updateCount(0), pixelCount(0),
     lastServerEncoding((unsigned int)-1), bpsEstimate(20000000)
 {
   setShared(::shared);
@@ -119,6 +124,17 @@ CConn::CConn(const char* vncServerName, network::Socket* socket=nullptr)
   setServerName(serverHost.c_str());
   setStreams(&sock->inStream(), &sock->outStream());
 
+#ifndef WIN32
+  supportsAudio = false;
+#else
+  win32AudioOutput = new Win32AudioOutput();
+  supportsAudio = win32AudioOutput->isAvailable();
+  if (!supportsAudio) {
+    delete win32AudioOutput;
+    win32AudioOutput = NULL;
+  }
+#endif
+
   initialiseProtocol();
 
   OptionsDialog::addCallback(handleOptions, this);
@@ -130,6 +146,11 @@ CConn::~CConn()
 
   OptionsDialog::removeCallback(handleOptions);
   Fl::remove_timeout(handleUpdateTimeout, this);
+
+#ifdef WIN32
+  if (win32AudioOutput)
+    delete win32AudioOutput;
+#endif
 
   if (desktop)
     delete desktop;
@@ -465,6 +486,60 @@ void CConn::handleClipboardData(const char* data)
   desktop->handleClipboardData(data);
 }
 
+bool CConn::audioInitAndGetFormat(uint8_t* sampleFormat,
+                                  uint8_t* channels,
+                                  uint32_t* samplingFreq)
+{
+#ifdef WIN32
+  if (win32AudioOutput) {
+    if (win32AudioOutput->isOpened() || win32AudioOutput->openAndAllocateBuffer()) {
+      (*sampleFormat) = win32AudioOutput->getSampleFormat();
+      (*channels)     = win32AudioOutput->getNumberOfChannels();
+      (*samplingFreq) = win32AudioOutput->getSamplingFreq();
+      return true;
+    } else {
+      delete win32AudioOutput;
+      win32AudioOutput = NULL;
+    }
+  }
+#endif
+  return false;
+}
+
+size_t CConn::audioSampleSize()
+{
+#ifdef WIN32
+  if (win32AudioOutput)
+    return win32AudioOutput->getSampleSize();
+#endif
+  return 1;
+}
+
+void CConn::audioNotifyStreamingStartStop(bool isStart)
+{
+#ifdef WIN32
+  if (win32AudioOutput)
+    return win32AudioOutput->notifyStreamingStartStop(isStart);
+#endif
+}
+
+size_t CConn::audioAddSamples(const uint8_t* data, size_t size)
+{
+#ifdef WIN32
+  if (win32AudioOutput)
+    return win32AudioOutput->addSamples(data, size);
+#endif
+  return size;
+}
+
+bool CConn::audioSubmitSamples()
+{
+#ifdef WIN32
+  if (win32AudioOutput)
+    return win32AudioOutput->submitSamples();
+#endif
+  return false;
+}
 
 ////////////////////// Internal methods //////////////////////
 

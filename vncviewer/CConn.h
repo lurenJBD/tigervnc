@@ -29,6 +29,10 @@ namespace network { class Socket; }
 
 class DesktopWindow;
 
+#ifdef WIN32
+class Win32AudioOutput;
+#endif
+
 class CConn : public rfb::CConnection
 {
 public:
@@ -76,6 +80,14 @@ public:
   void handleClipboardAnnounce(bool available) override;
   void handleClipboardData(const char* data) override;
 
+  virtual bool   audioInitAndGetFormat(uint8_t* sampleFormat,
+                                       uint8_t* channels,
+                                       uint32_t* samplingFreq) override;
+  virtual size_t audioSampleSize() override;
+  virtual void   audioNotifyStreamingStartStop(bool isStart) override;
+  virtual size_t audioAddSamples(const uint8_t* data, size_t size) override;
+  virtual bool   audioSubmitSamples() override;
+
 private:
 
   void resizeFramebuffer() override;
@@ -93,6 +105,9 @@ private:
   network::Socket* sock;
 
   DesktopWindow *desktop;
+#ifdef WIN32
+  Win32AudioOutput *win32AudioOutput;
+#endif
 
   unsigned updateCount;
   unsigned pixelCount;

@@ -203,6 +203,25 @@ void CMsgWriter::writeClientCutText(const char* str)
   endMsg();
 }
 
+void CMsgWriter::writeQemuAudioEnableOrDisable(bool enable)
+{
+  startMsg(msgTypeQEMUClientMessage);
+  os->writeU8(qemuAudio);
+  os->writeU16(enable ? msgToQemuEnableAudio : msgToQemuDisableAudio);
+  endMsg();
+}
+
+void CMsgWriter::writeQemuAudioSetFormat(uint8_t fmt, uint8_t channels, uint32_t frequency)
+{
+  startMsg(msgTypeQEMUClientMessage);
+  os->writeU8(qemuAudio);
+  os->writeU16(msgToQemuSetAudioFormat);
+  os->writeU8(fmt);
+  os->writeU8(channels);
+  os->writeU32(frequency);
+  endMsg();
+}
+
 void CMsgWriter::writeClipboardCaps(uint32_t caps,
                                     const uint32_t* lengths)
 {

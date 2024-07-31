@@ -76,9 +76,12 @@ namespace rfb {
     void setClipboardCaps(uint32_t flags, const uint32_t* lengths);
 
     bool supportsQEMUKeyEvent;
+    bool supportsQEMUAudio;
     bool supportsSetDesktopSize;
     bool supportsFence;
     bool supportsContinuousUpdates;
+
+    bool awaitsQEMUAudioFormatMsg;
 
   private:
 

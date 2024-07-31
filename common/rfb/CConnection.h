@@ -124,6 +124,9 @@ namespace rfb {
     void handleClipboardProvide(uint32_t flags, const size_t* lengths,
                                 const uint8_t* const* data) override;
 
+    virtual bool audioInitAndGetFormat(uint8_t* sampleFormat,
+                                       uint8_t* channels,
+                                       uint32_t* samplingFreq);
 
     // Methods to be overridden in a derived class
 
@@ -241,6 +244,7 @@ namespace rfb {
     bool supportsCursorPosition;
     bool supportsDesktopResize;
     bool supportsLEDState;
+    bool supportsAudio;
 
   private:
     // This is a default implementation of fences that automatically

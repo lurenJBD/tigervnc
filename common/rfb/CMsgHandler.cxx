@@ -85,6 +85,14 @@ void CMsgHandler::supportsQEMUKeyEvent()
   server.supportsQEMUKeyEvent = true;
 }
 
+void CMsgHandler::supportsQEMUAudioAndAwaitsFormatMsgOnce()
+{
+  if (!server.supportsQEMUAudio) {
+    server.supportsQEMUAudio        = true;
+    server.awaitsQEMUAudioFormatMsg = true;
+  }
+}
+
 void CMsgHandler::serverInit(int width, int height,
                              const PixelFormat& pf,
                              const char* name)
@@ -165,4 +173,23 @@ void CMsgHandler::handleClipboardProvide(uint32_t /*flags*/,
                                          const size_t* /*lengths*/,
                                          const uint8_t* const* /*data*/)
 {
+}
+
+size_t CMsgHandler::audioSampleSize()
+{
+  return 1;
+}
+
+void CMsgHandler::audioNotifyStreamingStartStop(bool /*isStart*/)
+{
+}
+
+size_t CMsgHandler::audioAddSamples(const uint8_t* /*data*/, size_t size)
+{
+  return size;
+}
+
+bool CMsgHandler::audioSubmitSamples()
+{
+  return false;
 }

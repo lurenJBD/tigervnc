@@ -52,7 +52,7 @@ static LogWriter vlog("CConnection");
 CConnection::CConnection()
   : csecurity(nullptr),
     supportsLocalCursor(false), supportsCursorPosition(false),
-    supportsDesktopResize(false), supportsLEDState(false),
+    supportsDesktopResize(false), supportsLEDState(false), supportsAudio(false),
     is(nullptr), os(nullptr), reader_(nullptr), writer_(nullptr),
     shared(false),
     state_(RFBSTATE_UNINITIALISED),
@@ -525,6 +525,18 @@ void CConnection::framebufferUpdateEnd()
 
     firstUpdate = false;
   }
+
+  if (server.awaitsQEMUAudioFormatMsg) {
+    if (supportsAudio) {
+      uint8_t sampleFormat, channels;
+      uint32_t samplingFreq;
+      if (audioInitAndGetFormat(&sampleFormat, &channels, &samplingFreq)) {
+        writer()->writeQemuAudioSetFormat(sampleFormat, channels, samplingFreq);
+        writer()->writeQemuAudioEnableOrDisable(true /* enable */);
+      }
+    }
+    server.awaitsQEMUAudioFormatMsg = false;
+  }
 }
 
 bool CConnection::dataRect(const Rect& r, int encoding)
@@ -607,6 +619,13 @@ void CConnection::handleClipboardProvide(uint32_t flags,
 
   // FIXME: Should probably verify that this data was actually requested
   handleClipboardData(serverClipboard.c_str());
+}
+
+bool CConnection::audioInitAndGetFormat(uint8_t* /*sampleFormat*/,
+                                        uint8_t* /*channels*/,
+                                        uint32_t* /*samplingFreq*/)
+{
+  return false;
 }
 
 void CConnection::authSuccess()
@@ -828,7 +847,10 @@ void CConnection::updateEncodings()
     encodings.push_back(pseudoEncodingLEDState);
     encodings.push_back(pseudoEncodingVMwareLEDState);
   }
-
+  if (supportsAudio) {
+    encodings.push_back(pseudoEncodingQEMUAudio);
+  }
+  
   encodings.push_back(pseudoEncodingDesktopName);
   encodings.push_back(pseudoEncodingLastRect);
   encodings.push_back(pseudoEncodingExtendedClipboard);
