@@ -45,7 +45,7 @@ struct ActiveDesktop {
     HRESULT result = CoCreateInstance(CLSID_ActiveDesktop, nullptr, CLSCTX_INPROC_SERVER,
                                       IID_IActiveDesktop, (PVOID*)&handle);
     if (result != S_OK)
-      throw rdr::SystemException("failed to contact Active Desktop", result);
+      throw rdr::win32_error("Failed to contact Active Desktop", HRESULT_CODE(result));
   }
   ~ActiveDesktop() {
     if (handle)
@@ -61,7 +61,7 @@ struct ActiveDesktop {
 
     HRESULT hr = handle->GetDesktopItem(i, &item, 0);
     if (hr != S_OK) {
-      vlog.error("unable to GetDesktopItem %d: %ld", i, hr);
+      vlog.error("Unable to GetDesktopItem %d: %ld", i, hr);
       return false;
     }
     item.fChecked = enable_;
@@ -105,7 +105,7 @@ struct ActiveDesktop {
     if (hr == S_OK)
       modifyComponents = (adOptions.fActiveDesktop==0) != (enable_==false);
     if (hr != S_OK) {
-      vlog.error("failed to get/set Active Desktop options: %ld", hr);
+      vlog.error("Failed to get/set Active Desktop options: %ld", hr);
       return false;
     }
 
@@ -122,7 +122,7 @@ struct ActiveDesktop {
       int itemCount = 0;
       hr = handle->GetDesktopItemCount(&itemCount, 0);
       if (hr != S_OK) {
-        vlog.error("failed to get desktop item count: %ld", hr);
+        vlog.error("Failed to get desktop item count: %ld", hr);
         return false;
       }
       for (int i=0; i<itemCount; i++) {
@@ -166,23 +166,23 @@ void CleanDesktop::disableWallpaper() {
   try {
     ImpersonateCurrentUser icu;
 
-    vlog.debug("disable desktop wallpaper/Active Desktop");
+    vlog.debug("Disable desktop wallpaper/Active Desktop");
 
     // -=- First attempt to remove the wallpaper using Active Desktop
     try {
       ActiveDesktop ad;
       if (ad.enable(false))
         restoreActiveDesktop = true;
-    } catch (rdr::Exception& e) {
-      vlog.error("%s", e.str());
+    } catch (std::exception& e) {
+      vlog.error("%s", e.what());
     }
 
     // -=- Switch of normal wallpaper and notify apps
     SysParamsInfo(SPI_SETDESKWALLPAPER, 0, (PVOID) "", SPIF_SENDCHANGE);
     restoreWallpaper = true;
 
-  } catch (rdr::Exception& e) {
-    vlog.info("%s", e.str());
+  } catch (std::exception& e) {
+    vlog.info("%s", e.what());
   }
 }
 
@@ -191,28 +191,28 @@ void CleanDesktop::enableWallpaper() {
     ImpersonateCurrentUser icu;
 
     if (restoreActiveDesktop) {
-      vlog.debug("restore Active Desktop");
+      vlog.debug("Restore Active Desktop");
 
       // -=- First attempt to re-enable Active Desktop
       try {
         ActiveDesktop ad;
         ad.enable(true);
         restoreActiveDesktop = false;
-      } catch (rdr::Exception& e) {
-        vlog.error("%s", e.str());
+      } catch (std::exception& e) {
+        vlog.error("%s", e.what());
       }
     }
 
     if (restoreWallpaper) {
-      vlog.debug("restore desktop wallpaper");
+      vlog.debug("Restore desktop wallpaper");
 
       // -=- Then restore the standard wallpaper if required
 	    SysParamsInfo(SPI_SETDESKWALLPAPER, 0, nullptr, SPIF_SENDCHANGE);
       restoreWallpaper = false;
     }
 
-  } catch (rdr::Exception& e) {
-    vlog.info("%s", e.str());
+  } catch (std::exception& e) {
+    vlog.info("%s", e.what());
   }
 }
 
@@ -221,7 +221,7 @@ void CleanDesktop::disableEffects() {
   try {
     ImpersonateCurrentUser icu;
 
-    vlog.debug("disable desktop effects");
+    vlog.debug("Disable desktop effects");
 
     SysParamsInfo(SPI_SETFONTSMOOTHING, FALSE, nullptr, SPIF_SENDCHANGE);
     if (SysParamsInfo(SPI_GETUIEFFECTS, 0, &uiEffects, 0) == ERROR_CALL_NOT_IMPLEMENTED) {
@@ -243,8 +243,8 @@ void CleanDesktop::disableEffects() {
     }
     restoreEffects = true;
 
-  } catch (rdr::Exception& e) {
-    vlog.info("%s", e.str());
+  } catch (std::exception& e) {
+    vlog.info("%s", e.what());
   }
 }
 
@@ -253,7 +253,7 @@ void CleanDesktop::enableEffects() {
     if (restoreEffects) {
       ImpersonateCurrentUser icu;
 
-      vlog.debug("restore desktop effects");
+      vlog.debug("Restore desktop effects");
 
       RegKey desktopCfg;
       desktopCfg.openKey(HKEY_CURRENT_USER, "Control Panel\\Desktop");
@@ -268,7 +268,7 @@ void CleanDesktop::enableEffects() {
       restoreEffects = false;
     }
 
-  } catch (rdr::Exception& e) {
-    vlog.info("%s", e.str());
+  } catch (std::exception& e) {
+    vlog.info("%s", e.what());
   }
 }

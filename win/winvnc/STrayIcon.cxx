@@ -47,8 +47,8 @@ using namespace winvnc;
 
 static LogWriter vlog("STrayIcon");
 
-BoolParameter STrayIconThread::disableOptions("DisableOptions", "Disable the Options entry in the VNC Server tray menu.", false);
-BoolParameter STrayIconThread::disableClose("DisableClose", "Disable the Close entry in the VNC Server tray menu.", false);
+BoolParameter STrayIconThread::disableOptions("DisableOptions", "Disable the Options entry in the VNC server tray menu.", false);
+BoolParameter STrayIconThread::disableClose("DisableClose", "Disable the Close entry in the VNC server tray menu.", false);
 
 
 //
@@ -159,8 +159,8 @@ public:
           if (isServiceProcess()) {
             try {
               rfb::win32::stopService(VNCServerService::Name);
-            } catch (rdr::Exception& e) {
-              MsgBox(nullptr, e.str(), MB_ICONERROR | MB_OK);
+            } catch (std::exception& e) {
+              MsgBox(nullptr, e.what(), MB_ICONERROR | MB_OK);
             }
           } else {
             thread.server.stop();

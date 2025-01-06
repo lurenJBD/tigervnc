@@ -65,7 +65,7 @@ bool Dialog::showDialog(const char* resource, HWND owner)
   INT_PTR result = DialogBoxParam(inst, resource, owner,
                                   staticDialogProc, (LPARAM)this);
   if (result<0)
-    throw rdr::SystemException("DialogBoxParam failed", GetLastError());
+    throw rdr::win32_error("DialogBoxParam failed", GetLastError());
   alreadyShowing = false;
   return (result == 1);
 }
@@ -78,7 +78,7 @@ int Dialog::getItemInt(int id) {
   BOOL trans;
   int result = GetDlgItemInt(handle, id, &trans, TRUE);
   if (!trans)
-    throw rdr::Exception("unable to read dialog Int");
+    throw std::runtime_error("Unable to read dialog Int");
   return result;
 }
 const char* Dialog::getItemString(int id) {
@@ -275,14 +275,14 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
 
     handle = (HWND)PropertySheet(&header);
     if ((handle == nullptr) || (handle == (HWND)-1))
-      throw rdr::SystemException("PropertySheet failed", GetLastError());
+      throw rdr::win32_error("PropertySheet failed", GetLastError());
     centerWindow(handle, owner_);
-    plog.info("created %p", handle);
+    plog.info("Created %p", handle);
 
     (void)capture;
 #ifdef _DIALOG_CAPTURE
     if (capture) {
-      plog.info("capturing \"%s\"", title.c_str());
+      plog.info("Capturing \"%s\"", title.c_str());
       char* tmpdir = getenv("TEMP");
       HDC dc = GetWindowDC(handle);
       DeviceFrameBuffer fb(dc);
@@ -306,7 +306,7 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
         }
         char filename[256];
         sprintf(filename, "%s\\%s.bmp", tmpdir, title);
-        vlog.debug("writing to %s", filename);
+        vlog.debug("Writing to %s", filename);
         saveBMP(filename, &fb);
         i++;
       }
@@ -335,7 +335,7 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
     }
 #endif
 
-    plog.info("finished %p", handle);
+    plog.info("Finished %p", handle);
 
     DestroyWindow(handle);
     handle = nullptr;
@@ -347,7 +347,7 @@ bool PropSheet::showPropSheet(HWND owner_, bool showApply, bool showCtxtHelp, bo
     delete [] hpages; hpages = nullptr;
 
     return true;
-  } catch (rdr::Exception&) {
+  } catch (std::exception&) {
     alreadyShowing = false;
 
     std::list<PropSheetPage*>::iterator pspi;

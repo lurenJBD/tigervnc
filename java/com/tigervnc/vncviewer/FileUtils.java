@@ -32,21 +32,11 @@ public class FileUtils {
       String os = System.getProperty("os.name");
       try {
         if (os.startsWith("Windows")) {
-          // JRE prior to 1.5 cannot reliably determine USERPROFILE
-          // return user.home and hope it's right...
-          if (Integer.parseInt(System.getProperty("java.version").split("\\.")[1]) < 5) {
-            try {
-              homeDir = System.getProperty("user.home");
-            } catch(java.security.AccessControlException e) {
-              vlog.error("Cannot access user.home system property:"+e.getMessage());
-            }
-          } else {
-            homeDir = System.getenv("USERPROFILE");
-          }
+          homeDir = System.getenv("USERPROFILE");
         } else {
           try {
-          homeDir = FileSystemView.getFileSystemView().
-            getDefaultDirectory().getCanonicalPath();
+            homeDir = FileSystemView.getFileSystemView().
+              getDefaultDirectory().getCanonicalPath();
           } catch(java.security.AccessControlException e) {
             vlog.error("Cannot access system property:"+e.getMessage());
           }
@@ -80,7 +70,7 @@ public class FileUtils {
       return newDir.getPath();
     } else {
       if (legacyDir.exists()) {
-        vlog.info("WARNING: ~/.vnc is deprecated, please consult 'man vncviewer' for paths to migrate to.");
+        vlog.info("Warning: ~/.vnc is deprecated, please consult 'man vncviewer' for paths to migrate to.");
         return legacyDir.getPath();
       }
       String xdgBaseDir = System.getenv(xdgEnv);

@@ -1,4 +1,4 @@
-/* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+/* Copyright 2011-2021 Pierre Ossman <ossman@cendio.se> for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,29 +15,28 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
-//
-// InputHandler - abstract interface for accepting keyboard &
-// pointer input and clipboard data.
-//
 
-#ifndef __RFB_INPUTHANDLER_H__
-#define __RFB_INPUTHANDLER_H__
+#ifndef __KEYBOARDX11_H__
+#define __KEYBOARDX11_H__
 
-#include <stdint.h>
+#include "Keyboard.h"
 
-#include <rfb/Rect.h>
+class KeyboardX11 : public Keyboard
+{
+public:
+  KeyboardX11(KeyboardHandler* handler);
+  virtual ~KeyboardX11();
 
-namespace rfb {
+  bool handleEvent(const void* event) override;
 
-  class InputHandler {
-  public:
-    virtual ~InputHandler() {}
-    virtual void keyEvent(uint32_t /*keysym*/, uint32_t /*keycode*/,
-                          bool /*down*/) { }
-    virtual void pointerEvent(const Point& /*pos*/,
-                              int /*buttonMask*/) { }
-    virtual void clientCutText(const char* /*str*/) { }
-  };
+  unsigned getLEDState() override;
+  void setLEDState(unsigned state) override;
 
-}
+protected:
+  unsigned getModifierMask(uint32_t keysym);
+
+private:
+  int code_map_keycode_to_qnum[256];
+};
+
 #endif

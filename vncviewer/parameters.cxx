@@ -33,9 +33,12 @@
 #include "parameters.h"
 
 #include <os/os.h>
-#include <rfb/Exception.h>
+
+#include <rdr/Exception.h>
+
 #include <rfb/LogWriter.h>
 #include <rfb/SecurityClient.h>
+#include <rfb/util.h>
 
 #include <FL/fl_utf8.h>
 
@@ -304,20 +307,20 @@ static void setKeyString(const char *_name, const char *_value, HKEY* hKey) {
   wchar_t name[buffersize];
   unsigned size = fl_utf8towc(_name, strlen(_name)+1, name, buffersize);
   if (size >= buffersize)
-    throw Exception(_("The name of the parameter is too large"));
+    throw std::invalid_argument(_("The name of the parameter is too large"));
 
   char encodingBuffer[buffersize];
   if (!encodeValue(_value, encodingBuffer, buffersize))
-    throw Exception(_("The parameter is too large"));
+    throw std::invalid_argument(_("The parameter is too large"));
 
   wchar_t value[buffersize];
   size = fl_utf8towc(encodingBuffer, strlen(encodingBuffer)+1, value, buffersize);
   if (size >= buffersize)
-    throw Exception(_("The parameter is too large"));
+    throw std::invalid_argument(_("The parameter is too large"));
 
   LONG res = RegSetValueExW(*hKey, name, 0, REG_SZ, (BYTE*)&value, (wcslen(value)+1)*2);
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException("RegSetValueExW", res);
+    throw rdr::win32_error("RegSetValueExW", res);
 }
 
 
@@ -329,11 +332,11 @@ static void setKeyInt(const char *_name, const int _value, HKEY* hKey) {
 
   unsigned size = fl_utf8towc(_name, strlen(_name)+1, name, buffersize);
   if (size >= buffersize)
-    throw Exception(_("The name of the parameter is too large"));
+    throw std::out_of_range(_("The name of the parameter is too large"));
 
   LONG res = RegSetValueExW(*hKey, name, 0, REG_DWORD, (BYTE*)&value, sizeof(DWORD));
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException("RegSetValueExW", res);
+    throw rdr::win32_error("RegSetValueExW", res);
 }
 
 
@@ -346,7 +349,7 @@ static bool getKeyString(const char* _name, char* dest, size_t destSize, HKEY* h
 
   unsigned size = fl_utf8towc(_name, strlen(_name)+1, name, buffersize);
   if (size >= buffersize)
-    throw Exception(_("The name of the parameter is too large"));
+    throw std::out_of_range(_("The name of the parameter is too large"));
 
   value = new WCHAR[destSize];
   valuesize = destSize;
@@ -354,7 +357,7 @@ static bool getKeyString(const char* _name, char* dest, size_t destSize, HKEY* h
   if (res != ERROR_SUCCESS){
     delete [] value;
     if (res != ERROR_FILE_NOT_FOUND)
-      throw rdr::SystemException("RegQueryValueExW", res);
+      throw rdr::win32_error("RegQueryValueExW", res);
     // The value does not exist, defaults will be used.
     return false;
   }
@@ -364,14 +367,14 @@ static bool getKeyString(const char* _name, char* dest, size_t destSize, HKEY* h
   delete [] value;
   if (size >= destSize) {
     delete [] utf8val;
-    throw Exception(_("The parameter is too large"));
+    throw std::out_of_range(_("The parameter is too large"));
   }
 
   bool ret = decodeValue(utf8val, dest, destSize);
   delete [] utf8val;
 
   if (!ret)
-    throw Exception(_("Invalid format or too large value"));
+    throw std::invalid_argument(_("Invalid format or too large value"));
 
   return true;
 }
@@ -386,12 +389,12 @@ static bool getKeyInt(const char* _name, int* dest, HKEY* hKey) {
 
   unsigned size = fl_utf8towc(_name, strlen(_name)+1, name, buffersize);
   if (size >= buffersize)
-    throw Exception(_("The name of the parameter is too large"));
+    throw std::out_of_range(_("The name of the parameter is too large"));
 
   LONG res = RegQueryValueExW(*hKey, name, nullptr, nullptr, (LPBYTE)&value, &dwordsize);
   if (res != ERROR_SUCCESS){
     if (res != ERROR_FILE_NOT_FOUND)
-      throw rdr::SystemException("RegQueryValueExW", res);
+      throw rdr::win32_error("RegQueryValueExW", res);
     // The value does not exist, defaults will be used.
     return false;
   }
@@ -406,18 +409,18 @@ static void removeValue(const char* _name, HKEY* hKey) {
 
   unsigned size = fl_utf8towc(_name, strlen(_name)+1, name, buffersize);
   if (size >= buffersize)
-    throw Exception(_("The name of the parameter is too large"));
+    throw std::out_of_range(_("The name of the parameter is too large"));
 
   LONG res = RegDeleteValueW(*hKey, name);
   if (res != ERROR_SUCCESS) {
     if (res != ERROR_FILE_NOT_FOUND)
-      throw rdr::SystemException("RegDeleteValueW", res);
+      throw rdr::win32_error("RegDeleteValueW", res);
     // The value does not exist, no need to remove it.
     return;
   }
 }
 
-void saveHistoryToRegKey(const vector<string>& serverHistory) {
+void saveHistoryToRegKey(const list<string>& serverHistory) {
   HKEY hKey;
   LONG res = RegCreateKeyExW(HKEY_CURRENT_USER,
                              L"Software\\TigerVNC\\vncviewer\\history", 0, nullptr,
@@ -425,26 +428,28 @@ void saveHistoryToRegKey(const vector<string>& serverHistory) {
                              &hKey, nullptr);
 
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException(_("Failed to create registry key"), res);
+    throw rdr::win32_error(_("Failed to create registry key"), res);
 
   unsigned index = 0;
   assert(SERVER_HISTORY_SIZE < 100);
   char indexString[3];
 
   try {
-    while(index < serverHistory.size() && index <= SERVER_HISTORY_SIZE) {
+    for (const string& entry : serverHistory) {
+      if (index > SERVER_HISTORY_SIZE)
+        break;
       snprintf(indexString, 3, "%d", index);
-      setKeyString(indexString, serverHistory[index].c_str(), &hKey);
+      setKeyString(indexString, entry.c_str(), &hKey);
       index++;
     }
-  } catch (Exception& e) {
+  } catch (std::exception& e) {
     RegCloseKey(hKey);
     throw;
   }
 
   res = RegCloseKey(hKey);
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException(_("Failed to close registry key"), res);
+    throw rdr::win32_error(_("Failed to close registry key"), res);
 }
 
 static void saveToReg(const char* servername) {
@@ -456,14 +461,14 @@ static void saveToReg(const char* servername) {
                              REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr,
                              &hKey, nullptr);
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException(_("Failed to create registry key"), res);
+    throw rdr::win32_error(_("Failed to create registry key"), res);
 
   try {
     setKeyString("ServerName", servername, &hKey);
-  } catch (Exception& e) {
+  } catch (std::exception& e) {
     RegCloseKey(hKey);
-    throw Exception(_("Failed to save \"%s\": %s"),
-                    "ServerName", e.str());
+    throw std::runtime_error(format(_("Failed to save \"%s\": %s"),
+                                    "ServerName", e.what()));
   }
 
   for (size_t i = 0; i < sizeof(parameterArray)/sizeof(VoidParameter*); i++) {
@@ -475,12 +480,13 @@ static void saveToReg(const char* servername) {
       } else if (dynamic_cast<BoolParameter*>(parameterArray[i]) != nullptr) {
         setKeyInt(parameterArray[i]->getName(), (int)*(BoolParameter*)parameterArray[i], &hKey);
       } else {
-        throw Exception(_("Unknown parameter type"));
+        throw std::logic_error(_("Unknown parameter type"));
       }
-    } catch (Exception& e) {
+    } catch (std::exception& e) {
       RegCloseKey(hKey);
-      throw Exception(_("Failed to save \"%s\": %s"),
-                      parameterArray[i]->getName(), e.str());
+      throw std::runtime_error(format(_("Failed to save \"%s\": %s"),
+                                      parameterArray[i]->getName(),
+                                      e.what()));
     }
   }
 
@@ -490,20 +496,22 @@ static void saveToReg(const char* servername) {
   for (size_t i = 0; i < sizeof(readOnlyParameterArray)/sizeof(VoidParameter*); i++) {
     try {
       removeValue(readOnlyParameterArray[i]->getName(), &hKey);
-    } catch (Exception& e) {
+    } catch (std::exception& e) {
       RegCloseKey(hKey);
-      throw Exception(_("Failed to remove \"%s\": %s"),
-                      readOnlyParameterArray[i]->getName(), e.str());
+      throw std::runtime_error(format(_("Failed to remove \"%s\": %s"),
+                                      readOnlyParameterArray[i]->getName(),
+                                      e.what()));
     }
   }
 
   res = RegCloseKey(hKey);
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException(_("Failed to close registry key"), res);
+    throw rdr::win32_error(_("Failed to close registry key"), res);
 }
 
-void loadHistoryFromRegKey(vector<string>& serverHistory) {
+list<string> loadHistoryFromRegKey() {
   HKEY hKey;
+  list<string> serverHistory;
 
   LONG res = RegOpenKeyExW(HKEY_CURRENT_USER,
                            L"Software\\TigerVNC\\vncviewer\\history", 0,
@@ -511,10 +519,10 @@ void loadHistoryFromRegKey(vector<string>& serverHistory) {
   if (res != ERROR_SUCCESS) {
     if (res == ERROR_FILE_NOT_FOUND) {
       // The key does not exist, defaults will be used.
-      return;
+      return serverHistory;
     }
 
-    throw rdr::SystemException(_("Failed to open registry key"), res);
+    throw rdr::win32_error(_("Failed to open registry key"), res);
   }
 
   unsigned index;
@@ -529,10 +537,10 @@ void loadHistoryFromRegKey(vector<string>& serverHistory) {
       if (!getKeyString(indexString, servernameBuffer,
                         buffersize, &hKey))
         break;
-    } catch (Exception& e) {
+    } catch (std::exception& e) {
       // Just ignore this entry and try the next one
       vlog.error(_("Failed to read server history entry %d: %s"),
-                 (int)index, e.str());
+                 (int)index, e.what());
       continue;
     }
 
@@ -541,7 +549,9 @@ void loadHistoryFromRegKey(vector<string>& serverHistory) {
 
   res = RegCloseKey(hKey);
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException(_("Failed to close registry key"), res);
+    throw rdr::win32_error(_("Failed to close registry key"), res);
+
+  return serverHistory;
 }
 
 static void getParametersFromReg(VoidParameter* parameters[],
@@ -563,12 +573,12 @@ static void getParametersFromReg(VoidParameter* parameters[],
         if (getKeyInt(parameters[i]->getName(), &intValue, hKey))
           ((BoolParameter*)parameters[i])->setParam(intValue);
       } else {
-        throw Exception(_("Unknown parameter type"));
+        throw std::logic_error(_("Unknown parameter type"));
       }
-    } catch(Exception& e) {
+    } catch(std::exception& e) {
       // Just ignore this entry and continue with the rest
       vlog.error(_("Failed to read parameter \"%s\": %s"),
-                 parameters[i]->getName(), e.str());
+                 parameters[i]->getName(), e.what());
     }
   }
 }
@@ -586,7 +596,7 @@ static char* loadFromReg() {
       return nullptr;
     }
 
-    throw rdr::SystemException(_("Failed to open registry key"), res);
+    throw rdr::win32_error(_("Failed to open registry key"), res);
   }
 
   const size_t buffersize = 256;
@@ -596,9 +606,9 @@ static char* loadFromReg() {
   try {
     if (getKeyString("ServerName", servernameBuffer, buffersize, &hKey))
       snprintf(servername, buffersize, "%s", servernameBuffer);
-  } catch(Exception& e) {
+  } catch(std::exception& e) {
     vlog.error(_("Failed to read parameter \"%s\": %s"),
-               "ServerName", e.str());
+               "ServerName", e.what());
     strcpy(servername, "");
   }
 
@@ -608,7 +618,7 @@ static char* loadFromReg() {
 
   res = RegCloseKey(hKey);
   if (res != ERROR_SUCCESS)
-    throw rdr::SystemException(_("Failed to close registry key"), res);
+    throw rdr::win32_error(_("Failed to close registry key"), res);
 
   return servername;
 }
@@ -631,7 +641,7 @@ void saveViewerParameters(const char *filename, const char *servername) {
     
     const char* configDir = os::getvncconfigdir();
     if (configDir == nullptr)
-      throw Exception(_("Could not obtain the config directory path"));
+      throw std::runtime_error(_("Could not determine VNC config directory path"));
 
     snprintf(filepath, sizeof(filepath), "%s/default.tigervnc", configDir);
   } else {
@@ -640,17 +650,19 @@ void saveViewerParameters(const char *filename, const char *servername) {
 
   /* Write parameters to file */
   FILE* f = fopen(filepath, "w+");
-  if (!f)
-    throw Exception(_("Could not open \"%s\": %s"),
-                    filepath, strerror(errno));
+  if (!f) {
+    std::string msg = format(_("Could not open \"%s\""), filepath);
+    throw rdr::posix_error(msg.c_str(), errno);
+  }
 
   fprintf(f, "%s\n", IDENTIFIER_STRING);
   fprintf(f, "\n");
 
   if (!encodeValue(servername, encodingBuffer, buffersize)) {
     fclose(f);
-    throw Exception(_("Failed to save \"%s\": %s"),
-                    "ServerName", _("Could not encode parameter"));
+    throw std::runtime_error(format(_("Failed to save \"%s\": %s"),
+                                    "ServerName",
+                                    _("Could not encode parameter")));
   }
   fprintf(f, "ServerName=%s\n", encodingBuffer);
 
@@ -659,9 +671,9 @@ void saveViewerParameters(const char *filename, const char *servername) {
       if (!encodeValue(*(StringParameter*)param,
           encodingBuffer, buffersize)) {
         fclose(f);
-        throw Exception(_("Failed to save \"%s\": %s"),
-                        param->getName(),
-                        _("Could not encode parameter"));
+        throw std::runtime_error(format(_("Failed to save \"%s\": %s"),
+                                        param->getName(),
+                                        _("Could not encode parameter")));
       }
       fprintf(f, "%s=%s\n", ((StringParameter*)param)->getName(), encodingBuffer);
     } else if (dynamic_cast<IntParameter*>(param) != nullptr) {
@@ -670,9 +682,9 @@ void saveViewerParameters(const char *filename, const char *servername) {
       fprintf(f, "%s=%d\n", ((BoolParameter*)param)->getName(), (int)*(BoolParameter*)param);
     } else {      
       fclose(f);
-      throw Exception(_("Failed to save \"%s\": %s"),
-                      param->getName(),
-                      _("Unknown parameter type"));
+      throw std::logic_error(format(_("Failed to save \"%s\": %s"),
+                                    param->getName(),
+                                    _("Unknown parameter type")));
     }
   }
   fclose(f);
@@ -691,7 +703,7 @@ static bool findAndSetViewerParameterFromValue(
     if (dynamic_cast<StringParameter*>(parameters[i]) != nullptr) {
       if (strcasecmp(line, ((StringParameter*)parameters[i])->getName()) == 0) {
         if(!decodeValue(value, decodingBuffer, sizeof(decodingBuffer)))
-          throw Exception(_("Invalid format or too large value"));
+          throw std::runtime_error(_("Invalid format or too large value"));
         ((StringParameter*)parameters[i])->setParam(decodingBuffer);
         return false;
       }
@@ -709,7 +721,7 @@ static bool findAndSetViewerParameterFromValue(
       }
 
     } else {
-      throw Exception(_("Unknown parameter type"));
+      throw std::logic_error(_("Unknown parameter type"));
     }
   }
 
@@ -735,7 +747,7 @@ char* loadViewerParameters(const char *filename) {
 
     const char* configDir = os::getvncconfigdir();
     if (configDir == nullptr)
-      throw Exception(_("Could not obtain the config directory path"));
+      throw std::runtime_error(_("Could not determine VNC config directory path"));
 
     snprintf(filepath, sizeof(filepath), "%s/default.tigervnc", configDir);
   } else {
@@ -747,8 +759,8 @@ char* loadViewerParameters(const char *filename) {
   if (!f) {
     if (!filename)
       return nullptr; // Use defaults.
-    throw Exception(_("Could not open \"%s\": %s"),
-                    filepath, strerror(errno));
+    std::string msg = format(_("Could not open \"%s\""), filepath);
+    throw rdr::posix_error(msg.c_str(), errno);
   }
   
   int lineNr = 0;
@@ -761,14 +773,18 @@ char* loadViewerParameters(const char *filename) {
         break;
 
       fclose(f);
-      throw Exception(_("Failed to read line %d in file %s: %s"),
-                      lineNr, filepath, strerror(errno));
+      std::string msg = format(_("Failed to read line %d in "
+                                 "file \"%s\""), lineNr, filepath);
+      throw rdr::posix_error(msg.c_str(), errno);
     }
 
     if (strlen(line) == (sizeof(line) - 1)) {
       fclose(f);
-      throw Exception(_("Failed to read line %d in file %s: %s"),
-                      lineNr, filepath, _("Line too long"));
+      throw std::runtime_error(format("%s: %s",
+                                      format(_("Failed to read line %d "
+                                               "in file \"%s\""),
+                                             lineNr, filepath).c_str(),
+                                      _("Line too long")));
     }
 
     // Make sure that the first line of the file has the file identifier string
@@ -777,8 +793,9 @@ char* loadViewerParameters(const char *filename) {
         continue;
 
       fclose(f);
-      throw Exception(_("Configuration file %s is in an invalid format"),
-                      filepath);
+      throw std::runtime_error(format(_("Configuration file %s is in "
+                                        "an invalid format"),
+                                      filepath));
     }
     
     // Skip empty lines and comments
@@ -812,7 +829,7 @@ char* loadViewerParameters(const char *filename) {
       if (strcasecmp(line, "ServerName") == 0) {
 
         if(!decodeValue(value, decodingBuffer, sizeof(decodingBuffer)))
-          throw Exception(_("Invalid format or too large value"));
+          throw std::runtime_error(_("Invalid format or too large value"));
         snprintf(servername, sizeof(decodingBuffer), "%s", decodingBuffer);
         invalidParameterName = false;
 
@@ -825,10 +842,10 @@ char* loadViewerParameters(const char *filename) {
                                                                     value, line);
         }
       }
-    } catch(Exception& e) {
+    } catch(std::exception& e) {
       // Just ignore this entry and continue with the rest
       vlog.error(_("Failed to read line %d in file %s: %s"),
-                 lineNr, filepath, e.str());
+                 lineNr, filepath, e.what());
       continue;
     }
 

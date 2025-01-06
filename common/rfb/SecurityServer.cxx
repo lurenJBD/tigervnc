@@ -21,7 +21,6 @@
 #include <config.h>
 #endif
 
-#include <rdr/Exception.h>
 #include <rfb/Security.h>
 #include <rfb/SSecurityNone.h>
 #include <rfb/SSecurityStack.h>
@@ -35,7 +34,6 @@
 #include <rfb/SSecurityRSAAES.h>
 #endif
 
-using namespace rdr;
 using namespace rfb;
 
 StringParameter SecurityServer::secTypes
@@ -91,6 +89,6 @@ SSecurity* SecurityServer::GetSSecurity(SConnection* sc, uint32_t secType)
   }
 
 bail:
-  throw Exception("Security type not supported");
+  throw std::invalid_argument("Security type not supported");
 }
 

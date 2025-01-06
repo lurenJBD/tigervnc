@@ -58,8 +58,8 @@
 #endif
 
 // width of each "edge" region where scrolling happens,
-// as a ratio compared to the viewport size
-// default: 1/16th of the viewport size
+// as a ratio compared to the window size
+// default: 1/16th of the window size
 #define EDGE_SCROLL_SIZE 16
 // edge width is calculated at runtime; these values are just examples
 static int edge_scroll_size_x = 128;
@@ -245,6 +245,11 @@ DesktopWindow::DesktopWindow(int w, int h, const char *name,
 
 DesktopWindow::~DesktopWindow()
 {
+  // Don't leave any dangling grabs as they are not automatically
+  // cleaned up on all platforms
+  ungrabPointer();
+  ungrabKeyboard();
+
   // Unregister all timeouts in case they get a change tro trigger
   // again later when this object is already gone.
   Fl::remove_timeout(handleGrab, this);
@@ -359,13 +364,6 @@ void DesktopWindow::resizeFramebuffer(int new_w, int new_h)
   if (!fullscreen_active() && !maximized) {
     if ((w() == viewport->w()) && (h() == viewport->h()))
       size(new_w, new_h);
-    else {
-      // Make sure the window isn't too big. We do this manually because
-      // we have to disable the window size restriction (and it isn't
-      // entirely trustworthy to begin with).
-      if ((w() > new_w) || (h() > new_h))
-        size(__rfbmin(w(), new_w), __rfbmin(h(), new_h));
-    }
   }
 
   viewport->size(new_w, new_h);
@@ -865,9 +863,9 @@ int DesktopWindow::handle(int event)
     }
     if (fullscreen_active()) {
       // calculate width of "edge" regions
-      edge_scroll_size_x = viewport->w() / EDGE_SCROLL_SIZE;
-      edge_scroll_size_y = viewport->h() / EDGE_SCROLL_SIZE;
-      // if cursor is near the edge of the viewport, scroll
+      edge_scroll_size_x = w() / EDGE_SCROLL_SIZE;
+      edge_scroll_size_y = h() / EDGE_SCROLL_SIZE;
+      // if cursor is near the edge of the window, scroll
       if (((viewport->x() < 0) && (Fl::event_x() < edge_scroll_size_x)) ||
           ((viewport->x() + viewport->w() >= w()) && (Fl::event_x() >= w() - edge_scroll_size_x)) ||
           ((viewport->y() < 0) && (Fl::event_y() < edge_scroll_size_y)) ||

@@ -61,16 +61,20 @@ namespace rfb {
     // there is data to read on the InStream.
     void initialiseProtocol();
 
-    // processMsg() should be called whenever there is data to read on the
-    // InStream.  You must have called initialiseProtocol() first.
+    // processMsg() should be called whenever there is data available on
+    // the CConnection's current InStream. It will process at most one
+    // RFB message before returning. If there was insufficient data,
+    // then it will return false and should be called again once more
+    // data is available.
     bool processMsg();
 
-    // approveConnection() is called to either accept or reject the connection.
-    // If accept is false, the reason string gives the reason for the
-    // rejection.  It can either be called directly from queryConnection() or
-    // later, after queryConnection() has returned.  It can only be called when
-    // in state RFBSTATE_QUERYING.  On rejection, an AuthFailureException is
-    // thrown, so this must be handled appropriately by the caller.
+    // approveConnection() is called to either accept or reject the
+    // connection. If accept is false, the reason string gives the
+    // reason for the rejection.  It can either be called directly from
+    // queryConnection() or later, after queryConnection() has returned.
+    // It can only be called when in state RFBSTATE_QUERYING.  On
+    // rejection, an auth_error is thrown, so this must be handled
+    // appropriately by the caller.
     void approveConnection(bool accept, const char* reason=nullptr);
 
 
@@ -94,6 +98,8 @@ namespace rfb {
                                 const uint8_t* const* data) override;
 
     void supportsQEMUKeyEvent() override;
+
+    virtual void supportsExtendedMouseButtons() override;
 
 
     // Methods to be overridden in a derived class
@@ -213,11 +219,11 @@ namespace rfb {
     int32_t getPreferredEncoding() { return preferredEncoding; }
 
   protected:
-    // throwConnFailedException() prints a message to the log, sends a conn
-    // failed message to the client (if possible) and throws a
-    // ConnFailedException.
-    void throwConnFailedException(const char* format, ...)
-      __attribute__((__format__ (__printf__, 2, 3)));
+    // failConnection() prints a message to the log, sends a connection
+    // failed message to the client (if possible) and throws an
+    // Exception.
+    void failConnection(const char* message);
+    void failConnection(const std::string& message);
 
     void setState(stateEnum s) { state_ = s; }
 

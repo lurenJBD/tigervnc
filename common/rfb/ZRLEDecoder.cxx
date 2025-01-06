@@ -64,7 +64,7 @@ static inline T readPixel(rdr::ZlibInStream* zis)
 static inline void zlibHasData(rdr::ZlibInStream* zis, size_t length)
 {
   if (!zis->hasData(length))
-    throw Exception("ZRLE decode error");
+    throw protocol_error("ZRLE decode error");
 }
 
 ZRLEDecoder::ZRLEDecoder() : Decoder(DecoderOrdered)
@@ -125,10 +125,10 @@ void ZRLEDecoder::zrleDecode(const Rect& r, rdr::InStream* is,
   Pixel maxPixel = pf.pixelFromRGB((uint16_t)-1, (uint16_t)-1, (uint16_t)-1);
   bool fitsInLS3Bytes = maxPixel < (1<<24);
   bool fitsInMS3Bytes = (maxPixel & 0xff) == 0;
-  bool isLowCPixel = (sizeof(T) == 4) &&
+  bool isLowCPixel = (sizeof(T) == 4) && (pf.depth <= 24) &&
                      ((fitsInLS3Bytes && pf.isLittleEndian()) ||
                       (fitsInMS3Bytes && pf.isBigEndian()));
-  bool isHighCPixel = (sizeof(T) == 4) &&
+  bool isHighCPixel = (sizeof(T) == 4) && (pf.depth <= 24) &&
                       ((fitsInLS3Bytes && pf.isBigEndian()) ||
                        (fitsInMS3Bytes && pf.isLittleEndian()));
 
@@ -242,7 +242,7 @@ void ZRLEDecoder::zrleDecode(const Rect& r, rdr::InStream* is,
             } while (b == 255);
 
             if (end - ptr < len) {
-              throw Exception ("ZRLE decode error");
+              throw protocol_error("ZRLE decode error");
             }
 
             while (len-- > 0) *ptr++ = pix;
@@ -267,7 +267,7 @@ void ZRLEDecoder::zrleDecode(const Rect& r, rdr::InStream* is,
               } while (b == 255);
 
               if (end - ptr < len) {
-                throw Exception ("ZRLE decode error");
+                throw protocol_error("ZRLE decode error");
               }
             }
 

@@ -1,6 +1,5 @@
-/* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * Copyright (C) 2010 TigerVNC Team
- *
+/* Copyright 2011-2021 Pierre Ossman <ossman@cendio.se> for Cendio AB
+ * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -16,26 +15,35 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
-#ifndef __RFB_USERMSGBOX_H__
-#define __RFB_USERMSGBOX_H__
 
-namespace rfb {
-  class UserMsgBox {
-  public:
-    enum MsgBoxFlags{
-      M_OK = 0,
-      M_OKCANCEL = 1,
-      M_YESNO = 4,
-      M_ICONERROR = 0x10,
-      M_ICONQUESTION = 0x20,
-      M_ICONWARNING = 0x30,
-      M_ICONINFORMATION = 0x40,
-      M_DEFBUTTON1 = 0,
-      M_DEFBUTTON2 = 0x100
-    };
-    /* TODO Implement as function with variable arguments */
-    virtual bool showMsgBox(int flags,const char* title, const char* text)=0;
-  };
-}
+#ifndef __KEYBOARD_H__
+#define __KEYBOARD_H__
+
+#include <stdint.h>
+
+class KeyboardHandler
+{
+public:
+  virtual void handleKeyPress(int systemKeyCode,
+                              uint32_t keyCode, uint32_t keySym) = 0;
+  virtual void handleKeyRelease(int systemKeyCode) = 0;
+};
+
+class Keyboard
+{
+public:
+  Keyboard(KeyboardHandler* handler_) : handler(handler_) {};
+  virtual ~Keyboard() {};
+
+  virtual bool handleEvent(const void* event) = 0;
+
+  virtual void reset() {};
+
+  virtual unsigned getLEDState() = 0;
+  virtual void setLEDState(unsigned state) = 0;
+
+protected:
+  KeyboardHandler* handler;
+};
 
 #endif

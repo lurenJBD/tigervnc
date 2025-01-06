@@ -52,9 +52,9 @@
 #ifdef HAVE_GNUTLS
 #include <rfb/CSecurityTLS.h>
 #endif
+#include <rfb/Hostname.h>
 #include <rfb/LogWriter.h>
 #include <rfb/Timer.h>
-#include <rfb/Exception.h>
 #include <rdr/Exception.h>
 #include <network/TcpSocket.h>
 #include <os/os.h>
@@ -101,9 +101,9 @@ static const char *about_text()
   // encodings, so we need to make sure we get a fresh string every
   // time.
   snprintf(buffer, sizeof(buffer),
-           _("TigerVNC Viewer v%s\n"
+           _("TigerVNC viewer v%s\n"
              "Built on: %s\n"
-             "Copyright (C) 1999-%d TigerVNC Team and many others (see README.rst)\n"
+             "Copyright (C) 1999-%d TigerVNC team and many others (see README.rst)\n"
              "See https://www.tigervnc.org for information on TigerVNC."),
            PACKAGE_VERSION, BUILD_TIMESTAMP, 2024);
 
@@ -154,9 +154,9 @@ void abort_connection(const char *error, ...)
   exitMainloop = true;
 }
 
-void abort_connection_with_unexpected_error(const rdr::Exception &e) {
+void abort_connection_with_unexpected_error(const std::exception &e) {
   abort_connection(_("An unexpected error occurred when communicating "
-                     "with the server:\n\n%s"), e.str());
+                     "with the server:\n\n%s"), e.what());
 }
 
 void disconnect()
@@ -263,7 +263,7 @@ static void CleanupSignalHandler(int sig)
 {
   // CleanupSignalHandler allows C++ object cleanup to happen because it calls
   // exit() rather than the default which is to abort.
-  vlog.info(_("Termination signal %d has been received. TigerVNC Viewer will now exit."), sig);
+  vlog.info(_("Termination signal %d has been received. TigerVNC viewer will now exit."), sig);
   exit(1);
 }
 
@@ -388,7 +388,7 @@ static void init_fltk()
   fl_message_hotspot(false);
 
   // Avoid empty titles for popups
-  fl_message_title_default(_("TigerVNC Viewer"));
+  fl_message_title_default(_("TigerVNC viewer"));
 
   // FLTK exposes these so that we can translate them.
   fl_no     = _("No");
@@ -411,8 +411,8 @@ static void init_fltk()
 
   Fl_Mac_App_Menu::print = ""; // Don't want the print item
   Fl_Mac_App_Menu::services = _("Services");
-  Fl_Mac_App_Menu::hide_others = _("Hide Others");
-  Fl_Mac_App_Menu::show = _("Show All");
+  Fl_Mac_App_Menu::hide_others = _("Hide others");
+  Fl_Mac_App_Menu::show = _("Show all");
 
   fl_mac_set_about(about_callback, nullptr);
 
@@ -448,7 +448,7 @@ static void usage(const char *programName)
 
   fprintf(stderr,
           "\n"
-          "usage: %s [parameters] [host][:displayNum]\n"
+          "Usage: %s [parameters] [host][:displayNum]\n"
           "       %s [parameters] [host][::port]\n"
 #ifndef WIN32
           "       %s [parameters] [unix socket]\n"
@@ -512,10 +512,10 @@ potentiallyLoadConfigurationFile(const char *filename)
       // don't try to connect to the filename
       strncpy(vncServerName, newServerName, VNCSERVERNAMELEN-1);
       vncServerName[VNCSERVERNAMELEN-1] = '\0';
-    } catch (rfb::Exception& e) {
-      vlog.error("%s", e.str());
+    } catch (std::exception& e) {
+      vlog.error("%s", e.what());
       abort_vncviewer(_("Unable to load the specified configuration "
-                        "file:\n\n%s"), e.str());
+                        "file:\n\n%s"), e.what());
     }
   }
 }
@@ -530,41 +530,59 @@ migrateDeprecatedOptions()
   }
 }
 
-#ifndef WIN32
-static int
-interpretViaParam(char *remoteHost, int *remotePort, int localPort)
+static void
+create_base_dirs()
 {
-  const int SERVER_PORT_OFFSET = 5900;
-  char *pos = strchr(vncServerName, ':');
-  if (pos == nullptr)
-    *remotePort = SERVER_PORT_OFFSET;
-  else {
-    int portOffset = SERVER_PORT_OFFSET;
-    size_t len;
-    *pos++ = '\0';
-    len = strlen(pos);
-    if (*pos == ':') {
-      /* Two colons is an absolute port number, not an offset. */
-      pos++;
-      len--;
-      portOffset = 0;
-    }
-    if (!len || strspn (pos, "-0123456789") != len )
-      return 1;
-    *remotePort = atoi(pos) + portOffset;
+  const char *dir;
+
+  dir = os::getvncconfigdir();
+  if (dir == nullptr) {
+    vlog.error(_("Could not determine VNC config directory path"));
+    return;
   }
 
-  if (*vncServerName != '\0')
-    strcpy(remoteHost, vncServerName);
-  else
-    strcpy(remoteHost, "localhost");
+#ifndef WIN32
+  const char *dotdir = strrchr(dir, '.');
+  if (dotdir != nullptr && strcmp(dotdir, ".vnc") == 0)
+    vlog.info(_("~/.vnc is deprecated, please consult 'man vncviewer' for paths to migrate to."));
+#else
+  const char *vncdir = strrchr(dir, '\\');
+  if (vncdir != nullptr && strcmp(vncdir, "vnc") == 0)
+    vlog.info(_("%%APPDATA%%\\vnc is deprecated, please switch to the %%APPDATA%%\\TigerVNC location."));
+#endif
 
-  snprintf(vncServerName, VNCSERVERNAMELEN, "localhost::%d", localPort);
-  vncServerName[VNCSERVERNAMELEN - 1] = '\0';
+  if (os::mkdir_p(dir, 0755) == -1) {
+    if (errno != EEXIST)
+      vlog.error(_("Could not create VNC config directory \"%s\": %s"),
+                 dir, strerror(errno));
+  }
 
-  return 0;
+  dir = os::getvncdatadir();
+  if (dir == nullptr) {
+    vlog.error(_("Could not determine VNC data directory path"));
+    return;
+  }
+
+  if (os::mkdir_p(dir, 0755) == -1) {
+    if (errno != EEXIST)
+      vlog.error(_("Could not create VNC data directory \"%s\": %s"),
+                 dir, strerror(errno));
+  }
+
+  dir = os::getvncstatedir();
+  if (dir == nullptr) {
+    vlog.error(_("Could not determine VNC state directory path"));
+    return;
+  }
+
+  if (os::mkdir_p(dir, 0755) == -1) {
+    if (errno != EEXIST)
+      vlog.error(_("Could not create VNC state directory \"%s\": %s"),
+                 dir, strerror(errno));
+  }
 }
 
+#ifndef WIN32
 static void
 createTunnel(const char *gatewayHost, const char *remoteHost,
              int remotePort, int localPort)
@@ -588,26 +606,24 @@ createTunnel(const char *gatewayHost, const char *remoteHost,
   free(cmd2);
 }
 
-static int mktunnel()
+static void mktunnel()
 {
   const char *gatewayHost;
-  char remoteHost[VNCSERVERNAMELEN];
+  std::string remoteHost;
   int localPort = findFreeTcpPort();
   int remotePort;
 
-  if (interpretViaParam(remoteHost, &remotePort, localPort) != 0)
-    return 1;
+  getHostAndPort(vncServerName, &remoteHost, &remotePort);
+  snprintf(vncServerName, VNCSERVERNAMELEN, "localhost::%d", localPort);
+  vncServerName[VNCSERVERNAMELEN - 1] = '\0';
   gatewayHost = (const char*)via;
-  createTunnel(gatewayHost, remoteHost, remotePort, localPort);
-
-  return 0;
+  createTunnel(gatewayHost, remoteHost.c_str(), remotePort, localPort);
 }
 #endif /* !WIN32 */
 
 int main(int argc, char** argv)
 {
   const char *localedir;
-  UserDialog dlg;
 
   argv0 = argv[0];
 
@@ -654,8 +670,8 @@ int main(int argc, char** argv)
       strncpy(defaultServerName, configServerName, VNCSERVERNAMELEN-1);
       defaultServerName[VNCSERVERNAMELEN-1] = '\0';
     }
-  } catch (rfb::Exception& e) {
-    vlog.error("%s", e.str());
+  } catch (std::exception& e) {
+    vlog.error("%s", e.what());
   }
 
   for (int i = 1; i < argc;) {
@@ -716,36 +732,7 @@ int main(int argc, char** argv)
 
   migrateDeprecatedOptions();
 
-  char *confdir = strdup(os::getvncconfigdir());
-#ifndef WIN32
-  char *dotdir = strrchr(confdir, '.');
-  if (dotdir != nullptr && strcmp(dotdir, ".vnc") == 0)
-    vlog.info(_("~/.vnc is deprecated, please consult 'man vncviewer' for paths to migrate to."));
-#else
-  char *vncdir = strrchr(confdir, '\\');
-  if (vncdir != nullptr && strcmp(vncdir, "vnc") == 0)
-    vlog.info(_("%%APPDATA%%\\vnc is deprecated, please switch to the %%APPDATA%%\\TigerVNC location."));
-#endif
-
-  if (os::mkdir_p(os::getvncconfigdir(), 0755) == -1) {
-    if (errno != EEXIST)
-      vlog.error(_("Could not create VNC config directory: %s"), strerror(errno));
-  }
-
-  if (os::mkdir_p(os::getvncdatadir(), 0755) == -1) {
-    if (errno != EEXIST)
-      vlog.error(_("Could not create VNC data directory: %s"), strerror(errno));
-  }
-
-  if (os::mkdir_p(os::getvncstatedir(), 0755) == -1) {
-    if (errno != EEXIST)
-      vlog.error(_("Could not create VNC state directory: %s"), strerror(errno));
-  }
-
-  CSecurity::upg = &dlg;
-#if defined(HAVE_GNUTLS) || defined(HAVE_NETTLE)
-  CSecurity::msg = &dlg;
-#endif
+  create_base_dirs();
 
   Socket *sock = nullptr;
 
@@ -769,7 +756,7 @@ int main(int argc, char** argv)
 
       createTcpListeners(&listeners, nullptr, port);
       if (listeners.empty())
-        throw Exception(_("Unable to listen for incoming connections"));
+        throw std::runtime_error(_("Unable to listen for incoming connections"));
 
       vlog.info(_("Listening on port %d"), port);
 
@@ -786,7 +773,7 @@ int main(int argc, char** argv)
             vlog.debug("Interrupted select() system call");
             continue;
           } else {
-            throw rdr::SystemException("select", errno);
+            throw rdr::socket_error("select", errno);
           }
         }
 
@@ -798,9 +785,9 @@ int main(int argc, char** argv)
               break;
           }
       }
-    } catch (rdr::Exception& e) {
-      vlog.error("%s", e.str());
-      abort_vncviewer(_("Failure waiting for incoming VNC connection:\n\n%s"), e.str());
+    } catch (std::exception& e) {
+      vlog.error("%s", e.what());
+      abort_vncviewer(_("Failure waiting for incoming VNC connection:\n\n%s"), e.what());
       return 1; /* Not reached */
     }
 
@@ -816,8 +803,14 @@ int main(int argc, char** argv)
     }
 
 #ifndef WIN32
-    if (strlen(via) > 0 && mktunnel() != 0)
-      usage(argv[0]);
+    if (strlen(via) > 0) {
+      try {
+        mktunnel();
+      } catch (std::exception& e) {
+        vlog.error("%s", e.what());
+        abort_vncviewer(_("Failure setting up encrypted tunnel:\n\n%s"), e.what());
+      }
+    }
 #endif
   }
 

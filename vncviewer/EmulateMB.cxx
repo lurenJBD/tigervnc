@@ -54,7 +54,7 @@
 
 #include <assert.h>
 
-#include <rfb/Exception.h>
+#include <stdexcept>
 
 #include "parameters.h"
 #include "i18n.h"
@@ -199,7 +199,7 @@ EmulateMB::EmulateMB()
 {
 }
 
-void EmulateMB::filterPointerEvent(const rfb::Point& pos, int buttonMask)
+void EmulateMB::filterPointerEvent(const rfb::Point& pos, uint16_t buttonMask)
 {
   int btstate;
   int action1, action2;
@@ -223,7 +223,7 @@ void EmulateMB::filterPointerEvent(const rfb::Point& pos, int buttonMask)
     btstate |= 0x2;
 
   if ((state > 10) || (state < 0))
-    throw rfb::Exception(_("Invalid state for 3 button emulation"));
+    throw std::runtime_error(_("Invalid state for 3 button emulation"));
 
   action1 = stateTab[state][btstate][0];
 
@@ -280,13 +280,13 @@ void EmulateMB::filterPointerEvent(const rfb::Point& pos, int buttonMask)
 void EmulateMB::handleTimeout(rfb::Timer *t)
 {
   int action1, action2;
-  int buttonMask;
+  uint16_t buttonMask;
 
   if (&timer != t)
     return;
 
   if ((state > 10) || (state < 0))
-    throw rfb::Exception(_("Invalid state for 3 button emulation"));
+    throw std::runtime_error(_("Invalid state for 3 button emulation"));
 
   // Timeout shouldn't trigger when there's no timeout action
   assert(stateTab[state][4][2] >= 0);
@@ -312,7 +312,7 @@ void EmulateMB::handleTimeout(rfb::Timer *t)
   state = stateTab[state][4][2];
 }
 
-void EmulateMB::sendAction(const rfb::Point& pos, int buttonMask, int action)
+void EmulateMB::sendAction(const rfb::Point& pos, uint16_t buttonMask, int action)
 {
   assert(action != 0);
 
@@ -325,7 +325,7 @@ void EmulateMB::sendAction(const rfb::Point& pos, int buttonMask, int action)
   sendPointerEvent(pos, buttonMask);
 }
 
-int EmulateMB::createButtonMask(int buttonMask)
+int EmulateMB::createButtonMask(uint16_t buttonMask)
 {
   // Unset left and right buttons in the mask
   buttonMask &= ~0x5;

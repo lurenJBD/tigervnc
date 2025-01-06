@@ -17,7 +17,7 @@
  * USA.
  */
 
-// -=- Single-Threaded VNC Server implementation
+// -=- Single-Threaded VNC server implementation
 
 
 // Note about how sockets get closed:
@@ -58,7 +58,6 @@
 #include <network/Socket.h>
 
 #include <rfb/ComparingUpdateTracker.h>
-#include <rfb/Exception.h>
 #include <rfb/KeyRemapper.h>
 #include <rfb/KeysymStr.h>
 #include <rfb/LogWriter.h>
@@ -92,7 +91,7 @@ VNCServerST::VNCServerST(const char* name_, SDesktop* desktop_)
     idleTimer(this), disconnectTimer(this), connectTimer(this),
     msc(0), queuedMsc(0), frameTimer(this)
 {
-  slog.debug("creating single-threaded server %s", name.c_str());
+  slog.debug("Creating single-threaded server %s", name.c_str());
 
   desktop_->init(this);
 
@@ -105,7 +104,7 @@ VNCServerST::VNCServerST(const char* name_, SDesktop* desktop_)
 
 VNCServerST::~VNCServerST()
 {
-  slog.debug("shutting down server %s", name.c_str());
+  slog.debug("Shutting down server %s", name.c_str());
 
   // Close any active clients, with appropriate logging & cleanup
   closeClients("Server shutdown");
@@ -140,7 +139,7 @@ void VNCServerST::addSocket(network::Socket* sock, bool outgoing, AccessRights a
   // *** do this in getSecurity instead?
   const char *address = sock->getPeerAddress();
   if (blHosts->isBlackmarked(address)) {
-    connectionsLog.error("blacklisted: %s", address);
+    connectionsLog.error("Blacklisted: %s", address);
     try {
       rdr::OutStream& os = sock->outStream();
 
@@ -151,14 +150,14 @@ void VNCServerST::addSocket(network::Socket* sock, bool outgoing, AccessRights a
       os.writeU32(strlen(reason));
       os.writeBytes((const uint8_t*)reason, strlen(reason));
       os.flush();
-    } catch (rdr::Exception&) {
+    } catch (std::exception&) {
     }
     sock->shutdown();
     closingSockets.push_back(sock);
     return;
   }
 
-  connectionsLog.status("accepted: %s", sock->getPeerEndpoint());
+  connectionsLog.status("Accepted: %s", sock->getPeerEndpoint());
 
   // Adjust the exit timers
   if (rfb::Server::maxConnectionTime && clients.empty())
@@ -176,8 +175,11 @@ void VNCServerST::removeSocket(network::Socket* sock) {
   for (ci = clients.begin(); ci != clients.end(); ci++) {
     if ((*ci)->getSock() == sock) {
       // - Remove any references to it
-      if (pointerClient == *ci)
+      if (pointerClient == *ci) {
+        // Release the mouse buttons the client have pressed
+        desktop->pointerEvent(cursorPos, 0);
         pointerClient = nullptr;
+      }
       if (clipboardClient == *ci)
         handleClipboardAnnounce(*ci, false);
       clipboardRequestors.remove(*ci);
@@ -189,7 +191,7 @@ void VNCServerST::removeSocket(network::Socket* sock) {
 
       clients.remove(*ci);
 
-      connectionsLog.status("closed: %s", peer.c_str());
+      connectionsLog.status("Closed: %s", peer.c_str());
 
       // - Check that the desktop object is still required
       if (authClientCount() == 0)
@@ -221,7 +223,7 @@ void VNCServerST::processSocketReadEvent(network::Socket* sock)
       return;
     }
   }
-  throw rdr::Exception("invalid Socket in VNCServerST");
+  throw std::invalid_argument("Invalid Socket in VNCServerST");
 }
 
 void VNCServerST::processSocketWriteEvent(network::Socket* sock)
@@ -234,7 +236,7 @@ void VNCServerST::processSocketWriteEvent(network::Socket* sock)
       return;
     }
   }
-  throw rdr::Exception("invalid Socket in VNCServerST");
+  throw std::invalid_argument("Invalid Socket in VNCServerST");
 }
 
 void VNCServerST::blockUpdates()
@@ -281,13 +283,13 @@ void VNCServerST::setPixelBuffer(PixelBuffer* pb_, const ScreenSet& layout)
     screenLayout = ScreenSet();
 
     if (desktopStarted)
-      throw Exception("setPixelBuffer: null PixelBuffer when desktopStarted?");
+      throw std::logic_error("setPixelBuffer: Null PixelBuffer when desktopStarted?");
 
     return;
   }
 
   if (!layout.validate(pb->width(), pb->height()))
-    throw Exception("setPixelBuffer: invalid screen layout");
+    throw std::invalid_argument("setPixelBuffer: Invalid screen layout");
 
   screenLayout = layout;
 
@@ -339,9 +341,9 @@ void VNCServerST::setPixelBuffer(PixelBuffer* pb_)
 void VNCServerST::setScreenLayout(const ScreenSet& layout)
 {
   if (!pb)
-    throw Exception("setScreenLayout: new screen layout without a PixelBuffer");
+    throw std::logic_error("setScreenLayout: New screen layout without a PixelBuffer");
   if (!layout.validate(pb->width(), pb->height()))
-    throw Exception("setScreenLayout: invalid screen layout");
+    throw std::invalid_argument("setScreenLayout: Invalid screen layout");
 
   screenLayout = layout;
 
@@ -375,7 +377,7 @@ void VNCServerST::sendClipboardData(const char* data)
   std::list<VNCSConnectionST*>::iterator ci;
 
   if (strchr(data, '\r') != nullptr)
-    throw Exception("Invalid carriage return in clipboard data");
+    throw std::invalid_argument("Invalid carriage return in clipboard data");
 
   for (ci = clipboardRequestors.begin();
        ci != clipboardRequestors.end(); ++ci)
@@ -482,7 +484,7 @@ void VNCServerST::keyEvent(uint32_t keysym, uint32_t keycode, bool down)
 }
 
 void VNCServerST::pointerEvent(VNCSConnectionST* client,
-                               const Point& pos, int buttonMask)
+                               const Point& pos, uint16_t buttonMask)
 {
   time_t now = time(nullptr);
   if (rfb::Server::maxIdleTime)
@@ -563,7 +565,7 @@ unsigned int VNCServerST::setDesktopSize(VNCSConnectionST* requester,
 
   // Sanity check
   if (screenLayout != layout)
-    throw Exception("Desktop configured a different screen layout than requested");
+    throw std::runtime_error("Desktop configured a different screen layout than requested");
 
   // Notify other clients
   for (ci = clients.begin(); ci != clients.end(); ++ci) {
@@ -703,7 +705,7 @@ void VNCServerST::clientReady(VNCSConnectionST* client, bool shared)
     if (rfb::Server::disconnectClients &&
         client->accessCheck(AccessNonShared)) {
       // - Close all the other connected clients
-      slog.debug("non-shared connection - closing clients");
+      slog.debug("Non-shared connection - closing clients");
       closeClients("Non-shared connection requested", client->getSock());
     } else {
       // - Refuse this connection if there are existing clients, in addition to
@@ -721,10 +723,10 @@ void VNCServerST::clientReady(VNCSConnectionST* client, bool shared)
 void VNCServerST::startDesktop()
 {
   if (!desktopStarted) {
-    slog.debug("starting desktop");
+    slog.debug("Starting desktop");
     desktop->start();
     if (!pb)
-      throw Exception("SDesktop::start() did not set a valid PixelBuffer");
+      throw std::logic_error("SDesktop::start() did not set a valid PixelBuffer");
     desktopStarted = true;
     // The tracker might have accumulated changes whilst we were
     // stopped, so flush those out
@@ -743,7 +745,7 @@ void VNCServerST::startDesktop()
 void VNCServerST::stopDesktop()
 {
   if (desktopStarted) {
-    slog.debug("stopping desktop");
+    slog.debug("Stopping desktop");
     desktopStarted = false;
     desktop->stop();
   }

@@ -38,7 +38,6 @@
 #include <sys/utsname.h>
 
 #include <network/Socket.h>
-#include <rfb/Exception.h>
 #include <rfb/VNCServerST.h>
 #include <rfb/LogWriter.h>
 #include <rfb/Configuration.h>
@@ -68,7 +67,7 @@ BoolParameter rawKeyboard("RawKeyboard",
                           "layout", false);
 IntParameter queryConnectTimeout("QueryConnectTimeout",
                                  "Number of seconds to show the "
-                                 "Accept Connection dialog before "
+                                 "Accept connection dialog before "
                                  "rejecting the connection",
                                  10);
 
@@ -195,8 +194,8 @@ void XserverDesktop::requestClipboard()
 {
   try {
     server->requestClipboard();
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::requestClipboard: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::requestClipboard: %s",e.what());
   }
 }
 
@@ -204,8 +203,8 @@ void XserverDesktop::announceClipboard(bool available)
 {
   try {
     server->announceClipboard(available);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::announceClipboard: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::announceClipboard: %s",e.what());
   }
 }
 
@@ -213,8 +212,8 @@ void XserverDesktop::sendClipboardData(const char* data_)
 {
   try {
     server->sendClipboardData(data_);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::sendClipboardData: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::sendClipboardData: %s",e.what());
   }
 }
 
@@ -232,8 +231,8 @@ void XserverDesktop::setDesktopName(const char* name)
 {
   try {
     server->setName(name);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::setDesktopName: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::setDesktopName: %s",e.what());
   }
 }
 
@@ -267,8 +266,8 @@ void XserverDesktop::setCursor(int width, int height, int hotX, int hotY,
 
   try {
     server->setCursor(width, height, Point(hotX, hotY), cursorData);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::setCursor: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::setCursor: %s",e.what());
   }
 
   delete [] cursorData;
@@ -278,8 +277,8 @@ void XserverDesktop::setCursorPos(int x, int y, bool warped)
 {
   try {
     server->setCursorPos(Point(x, y), warped);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::setCursorPos: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::setCursorPos: %s",e.what());
   }
 }
 
@@ -287,8 +286,8 @@ void XserverDesktop::add_changed(const rfb::Region &region)
 {
   try {
     server->add_changed(region);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::add_changed: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::add_changed: %s",e.what());
   }
 }
 
@@ -296,8 +295,8 @@ void XserverDesktop::add_copied(const rfb::Region &dest, const rfb::Point &delta
 {
   try {
     server->add_copied(dest, delta);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::add_copied: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::add_copied: %s",e.what());
   }
 }
 
@@ -313,8 +312,8 @@ void XserverDesktop::handleSocketEvent(int fd, bool read, bool write)
       return;
 
     vlog.error("Cannot find file descriptor for socket event");
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::handleSocketEvent: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::handleSocketEvent: %s",e.what());
   }
 }
 
@@ -333,7 +332,7 @@ bool XserverDesktop::handleListenerEvent(int fd,
     return false;
 
   Socket* sock = (*i)->accept();
-  vlog.debug("new client, sock %d", sock->getFd());
+  vlog.debug("New client, sock %d", sock->getFd());
   sockserv->addSocket(sock);
   vncSetNotifyFd(sock->getFd(), screenIndex, true, false);
 
@@ -380,7 +379,7 @@ void XserverDesktop::blockHandler(int* timeout)
     for (i = sockets.begin(); i != sockets.end(); i++) {
       int fd = (*i)->getFd();
       if ((*i)->isShutdown()) {
-        vlog.debug("client gone, sock %d",fd);
+        vlog.debug("Client gone, sock %d",fd);
         vncRemoveNotifyFd(fd);
         server->removeSocket(*i);
         vncClientGone(fd);
@@ -406,21 +405,21 @@ void XserverDesktop::blockHandler(int* timeout)
     int nextTimeout = Timer::checkTimeouts();
     if (nextTimeout >= 0 && (*timeout == -1 || nextTimeout < *timeout))
       *timeout = nextTimeout;
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::blockHandler: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::blockHandler: %s", e.what());
   }
 }
 
 void XserverDesktop::addClient(Socket* sock, bool reverse, bool viewOnly)
 {
-  vlog.debug("new client, sock %d reverse %d",sock->getFd(),reverse);
+  vlog.debug("New client, sock %d reverse %d",sock->getFd(),reverse);
   server->addSocket(sock, reverse, viewOnly ? AccessView : AccessDefault);
   vncSetNotifyFd(sock->getFd(), screenIndex, true, false);
 }
 
 void XserverDesktop::disconnectClients()
 {
-  vlog.debug("disconnecting all clients");
+  vlog.debug("Disconnecting all clients");
   return server->closeClients("Disconnection from server end");
 }
 
@@ -463,7 +462,7 @@ void XserverDesktop::terminate()
   kill(getpid(), SIGTERM);
 }
 
-void XserverDesktop::pointerEvent(const Point& pos, int buttonMask)
+void XserverDesktop::pointerEvent(const Point& pos, uint16_t buttonMask)
 {
   vncPointerMove(pos.x + vncGetScreenX(screenIndex),
                  pos.y + vncGetScreenY(screenIndex));

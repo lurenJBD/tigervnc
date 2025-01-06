@@ -22,12 +22,14 @@
 #endif
 
 #include <assert.h>
+
+#include <stdexcept>
+
 #include <rfb/CSecurityNone.h>
 #include <rfb/CSecurityStack.h>
 #include <rfb/CSecurityVeNCrypt.h>
 #include <rfb/CSecurityVncAuth.h>
 #include <rfb/CSecurityPlain.h>
-#include <rdr/Exception.h>
 #include <rfb/Security.h>
 #ifdef HAVE_GNUTLS
 #include <rfb/CSecurityTLS.h>
@@ -38,13 +40,7 @@
 #include <rfb/CSecurityMSLogonII.h>
 #endif
 
-using namespace rdr;
 using namespace rfb;
-
-UserPasswdGetter *CSecurity::upg = nullptr;
-#if defined(HAVE_GNUTLS) || defined(HAVE_NETTLE)
-UserMsgBox *CSecurity::msg = nullptr;
-#endif
 
 StringParameter SecurityClient::secTypes
 ("SecurityTypes",
@@ -67,11 +63,6 @@ ConfViewer);
 
 CSecurity* SecurityClient::GetCSecurity(CConnection* cc, uint32_t secType)
 {
-  assert (CSecurity::upg != nullptr); /* (upg == nullptr) means bug in the viewer */
-#if defined(HAVE_GNUTLS) || defined(HAVE_NETTLE)
-  assert (CSecurity::msg != nullptr);
-#endif
-
   if (!IsSupported(secType))
     goto bail;
 
@@ -121,5 +112,5 @@ CSecurity* SecurityClient::GetCSecurity(CConnection* cc, uint32_t secType)
   }
 
 bail:
-  throw Exception("Security type not supported");
+  throw std::invalid_argument("Security type not supported");
 }

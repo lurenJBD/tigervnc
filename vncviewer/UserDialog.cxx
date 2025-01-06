@@ -21,6 +21,7 @@
 #endif
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -31,8 +32,11 @@
 #include <FL/Fl_Input.H>
 #include <FL/Fl_Secret_Input.H>
 #include <FL/Fl_Button.H>
+#include <FL/Fl_Check_Button.H>
 #include <FL/Fl_Return_Button.H>
 #include <FL/Fl_Pixmap.H>
+
+#include <rdr/Exception.h>
 
 #include <rfb/Exception.h>
 #include <rfb/obfuscate.h>
@@ -55,6 +59,9 @@ using namespace rfb;
 static Fl_Pixmap secure_icon(secure);
 static Fl_Pixmap insecure_icon(insecure);
 
+std::string UserDialog::savedUsername;
+std::string UserDialog::savedPassword;
+
 static long ret_val = 0;
 
 static void button_cb(Fl_Widget *widget, long val) {
@@ -68,6 +75,12 @@ UserDialog::UserDialog()
 
 UserDialog::~UserDialog()
 {
+}
+
+void UserDialog::resetPassword()
+{
+  savedUsername.clear();
+  savedPassword.clear();
 }
 
 void UserDialog::getUserPasswd(bool secure_, std::string* user,
@@ -90,13 +103,24 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
     return;
   }
 
+  if (user && !savedUsername.empty() && !savedPassword.empty()) {
+    *user = savedUsername;
+    *password = savedPassword;
+    return;
+  }
+
+  if (!user && !savedPassword.empty()) {
+    *password = savedPassword;
+    return;
+  }
+
   if (!user && passwordFileName[0]) {
-    std::vector<uint8_t> obfPwd(256);
+    std::vector<uint8_t> obfPwd(8);
     FILE* fp;
 
     fp = fopen(passwordFileName, "rb");
     if (!fp)
-      throw rfb::Exception(_("Opening password file failed"));
+      throw rdr::posix_error(_("Opening password file failed"), errno);
 
     obfPwd.resize(fread(obfPwd.data(), 1, obfPwd.size(), fp));
     fclose(fp);
@@ -112,6 +136,7 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
   Fl_Secret_Input *passwd;
   Fl_Box *icon;
   Fl_Button *button;
+  Fl_Check_Button *keepPasswdCheckbox;
 
   int x, y;
 
@@ -165,6 +190,16 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
   passwd->align(FL_ALIGN_LEFT | FL_ALIGN_TOP);
   y += INPUT_HEIGHT + INNER_MARGIN;
 
+  if (reconnectOnError) {
+    keepPasswdCheckbox = new Fl_Check_Button(LBLRIGHT(x, y,
+                                                      CHECK_MIN_WIDTH,
+                                                      CHECK_HEIGHT,
+                                                      _("Keep password for reconnect")));
+    y += CHECK_HEIGHT + INNER_MARGIN;
+  } else {
+    keepPasswdCheckbox = nullptr;
+  }
+
   x = win->w() - OUTER_MARGIN;
   y += OUTER_MARGIN - INNER_MARGIN;
 
@@ -196,18 +231,30 @@ void UserDialog::getUserPasswd(bool secure_, std::string* user,
   while (win->shown()) Fl::wait();
 
   if (ret_val == 0) {
-    if (user)
+    bool keepPasswd;
+
+    if (reconnectOnError)
+      keepPasswd = keepPasswdCheckbox->value();
+    else
+      keepPasswd = false;
+
+    if (user) {
       *user = username->value();
+      if (keepPasswd)
+        savedUsername = username->value();
+    }
     *password = passwd->value();
+    if (keepPasswd)
+      savedPassword = passwd->value();
   }
 
   delete win;
 
   if (ret_val != 0)
-    throw rfb::Exception(_("Authentication cancelled"));
+    throw rfb::auth_cancelled();
 }
 
-bool UserDialog::showMsgBox(int flags, const char* title, const char* text)
+bool UserDialog::showMsgBox(MsgBoxFlags flags, const char* title, const char* text)
 {
   char buffer[1024];
 

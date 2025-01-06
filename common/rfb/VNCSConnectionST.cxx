@@ -22,6 +22,8 @@
 #include <config.h>
 #endif
 
+#include <rdr/Exception.h>
+
 #include <network/TcpSocket.h>
 
 #include <rfb/ComparingUpdateTracker.h>
@@ -80,11 +82,8 @@ VNCSConnectionST::~VNCSConnectionST()
 {
   // If we reach here then VNCServerST is deleting us!
   if (!closeReason.empty())
-    vlog.info("closing %s: %s", peerEndpoint.c_str(),
+    vlog.info("Closing %s: %s", peerEndpoint.c_str(),
               closeReason.c_str());
-
-  // Release any mouse buttons
-  server->pointerEvent(this, server->getCursorPos(), 0);
 
   // Release any keys the client still had pressed
   while (!pressedKeys.empty()) {
@@ -123,18 +122,7 @@ void VNCSConnectionST::close(const char* reason)
   if (closeReason.empty())
     closeReason = reason;
   else
-    vlog.debug("second close: %s (%s)", peerEndpoint.c_str(), reason);
-
-  try {
-    if (sock->outStream().hasBufferedData()) {
-      sock->outStream().cork(false);
-      sock->outStream().flush();
-      if (sock->outStream().hasBufferedData())
-        vlog.error("Failed to flush remaining socket data on close");
-    }
-  } catch (rdr::Exception& e) {
-    vlog.error("Failed to flush remaining socket data on close: %s", e.str());
-  }
+    vlog.debug("Second close: %s (%s)", peerEndpoint.c_str(), reason);
 
   // Just shutdown the socket and mark our state as closing.  Eventually the
   // calling code will call VNCServerST's removeSocket() method causing us to
@@ -149,8 +137,8 @@ bool VNCSConnectionST::init()
 {
   try {
     initialiseProtocol();
-  } catch (rdr::Exception& e) {
-    close(e.str());
+  } catch (std::exception& e) {
+    close(e.what());
     return false;
   }
   return true;
@@ -190,10 +178,10 @@ void VNCSConnectionST::processMessages()
     // We wait until now with this to aggregate responses and to give 
     // higher priority to user actions such as keyboard and pointer events.
     writeFramebufferUpdate();
-  } catch (rdr::EndOfStream&) {
+  } catch (rdr::end_of_stream&) {
     close("Clean disconnection");
-  } catch (rdr::Exception &e) {
-    close(e.str());
+  } catch (std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -206,8 +194,8 @@ void VNCSConnectionST::flushSocket()
     // delayed because of congestion.
     if (!sock->outStream().hasBufferedData())
       writeFramebufferUpdate();
-  } catch (rdr::Exception &e) {
-    close(e.str());
+  } catch (std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -255,8 +243,8 @@ void VNCSConnectionST::pixelBufferChange()
     updates.clear();
     updates.add_changed(server->getPixelBuffer()->getRect());
     writeFramebufferUpdate();
-  } catch(rdr::Exception &e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -264,8 +252,8 @@ void VNCSConnectionST::writeFramebufferUpdateOrClose()
 {
   try {
     writeFramebufferUpdate();
-  } catch(rdr::Exception &e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -274,8 +262,8 @@ void VNCSConnectionST::screenLayoutChangeOrClose(uint16_t reason)
   try {
     screenLayoutChange(reason);
     writeFramebufferUpdate();
-  } catch(rdr::Exception &e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -283,8 +271,8 @@ void VNCSConnectionST::bellOrClose()
 {
   try {
     if (state() == RFBSTATE_NORMAL) writer()->writeBell();
-  } catch(rdr::Exception& e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -293,8 +281,8 @@ void VNCSConnectionST::setDesktopNameOrClose(const char *name)
   try {
     setDesktopName(name);
     writeFramebufferUpdate();
-  } catch(rdr::Exception& e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -303,8 +291,8 @@ void VNCSConnectionST::setCursorOrClose()
   try {
     setCursor();
     writeFramebufferUpdate();
-  } catch(rdr::Exception& e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -313,8 +301,8 @@ void VNCSConnectionST::setLEDStateOrClose(unsigned int state)
   try {
     setLEDState(state);
     writeFramebufferUpdate();
-  } catch(rdr::Exception& e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -325,8 +313,8 @@ void VNCSConnectionST::requestClipboardOrClose()
     if (!accessCheck(AccessCutText)) return;
     if (!rfb::Server::acceptCutText) return;
     requestClipboard();
-  } catch(rdr::Exception& e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -337,8 +325,8 @@ void VNCSConnectionST::announceClipboardOrClose(bool available)
     if (!accessCheck(AccessCutText)) return;
     if (!rfb::Server::sendCutText) return;
     announceClipboard(available);
-  } catch(rdr::Exception& e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -349,8 +337,8 @@ void VNCSConnectionST::sendClipboardDataOrClose(const char* data)
     if (!accessCheck(AccessCutText)) return;
     if (!rfb::Server::sendCutText) return;
     sendClipboardData(data);
-  } catch(rdr::Exception& e) {
-    close(e.str());
+  } catch(std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -421,8 +409,8 @@ void VNCSConnectionST::approveConnectionOrClose(bool accept,
 {
   try {
     approveConnection(accept, reason);
-  } catch (rdr::Exception& e) {
-    close(e.str());
+  } catch (std::exception& e) {
+    close(e.what());
   }
 }
 
@@ -477,7 +465,7 @@ void VNCSConnectionST::setPixelFormat(const PixelFormat& pf)
   setCursor();
 }
 
-void VNCSConnectionST::pointerEvent(const Point& pos, int buttonMask)
+void VNCSConnectionST::pointerEvent(const Point& pos, uint16_t buttonMask)
 {
   if (rfb::Server::idleTimeout)
     idleTimer.start(secsToMillis(rfb::Server::idleTimeout));
@@ -496,12 +484,12 @@ public:
   ~VNCSConnectionSTShiftPresser() {
     if (pressed) {
       vlog.debug("Releasing fake Shift_L");
-      server->keyEvent(XK_Shift_L, 0, false);
+      server->keyEvent(XK_Shift_L, 0x2a, false);
     }
   }
   void press() {
     vlog.debug("Pressing fake Shift_L");
-    server->keyEvent(XK_Shift_L, 0, true);
+    server->keyEvent(XK_Shift_L, 0x2a, true);
     pressed = true;
   }
   VNCServerST* server;
@@ -550,8 +538,8 @@ void VNCSConnectionST::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
 
         if (lock == (uppercase == shift)) {
           vlog.debug("Inserting fake CapsLock to get in sync with client");
-          server->keyEvent(XK_Caps_Lock, 0, true);
-          server->keyEvent(XK_Caps_Lock, 0, false);
+          server->keyEvent(XK_Caps_Lock, 0x3a, true);
+          server->keyEvent(XK_Caps_Lock, 0x3a, false);
         }
       }
 
@@ -580,8 +568,8 @@ void VNCSConnectionST::keyEvent(uint32_t keysym, uint32_t keycode, bool down) {
           //
         } else if (lock == (number == shift)) {
           vlog.debug("Inserting fake NumLock to get in sync with client");
-          server->keyEvent(XK_Num_Lock, 0, true);
-          server->keyEvent(XK_Num_Lock, 0, false);
+          server->keyEvent(XK_Num_Lock, 0x45, true);
+          server->keyEvent(XK_Num_Lock, 0x45, false);
         }
       }
     }
@@ -706,8 +694,10 @@ void VNCSConnectionST::fence(uint32_t flags, unsigned len, const uint8_t data[])
     return;
   }
 
-  if (len < 1)
+  if (len < 1) {
     vlog.error("Fence response of unexpected size received");
+    return;
+  }
 
   type = data[0];
 
@@ -729,7 +719,7 @@ void VNCSConnectionST::enableContinuousUpdates(bool enable,
   Rect rect;
 
   if (!client.supportsFence() || !client.supportsContinuousUpdates())
-    throw Exception("Client tried to enable continuous updates when not allowed");
+    throw protocol_error("Client tried to enable continuous updates when not allowed");
 
   continuousUpdates = enable;
 
@@ -806,8 +796,8 @@ void VNCSConnectionST::handleTimeout(Timer* t)
     if ((t == &congestionTimer) ||
         (t == &losslessTimer))
       writeFramebufferUpdate();
-  } catch (rdr::Exception& e) {
-    close(e.str());
+  } catch (std::exception& e) {
+    close(e.what());
   }
 
   if (t == &idleTimer)

@@ -21,8 +21,10 @@
 #endif
 
 #include <assert.h>
+
+#include <stdexcept>
+
 #include <rdr/AESInStream.h>
-#include <rdr/Exception.h>
 
 #ifdef HAVE_NETTLE
 using namespace rdr;
@@ -36,7 +38,7 @@ AESInStream::AESInStream(InStream* _in, const uint8_t* key,
   else if (keySize == 256)
     EAX_SET_KEY(&eaxCtx256, aes256_set_encrypt_key, aes256_encrypt, key);
   else
-    assert(!"incorrect key size");
+    throw std::out_of_range("Incorrect key size");
 }
 
 AESInStream::~AESInStream() {}
@@ -68,7 +70,7 @@ bool AESInStream::fillBuffer()
     EAX_DIGEST(&eaxCtx256, aes256_encrypt, 16, macComputed);
   }
   if (memcmp(mac, macComputed, 16) != 0)
-    throw Exception("AESInStream: failed to authenticate message");
+    throw std::runtime_error("AESInStream: Failed to authenticate message");
   in->setptr(2 + length + 16);
   end += length;
 

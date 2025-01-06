@@ -108,6 +108,8 @@ public:
   void setColourMapEntries(int, int, uint16_t*) override;
   void bell() override;
   void serverCutText(const char*) override;
+  virtual void getUserPasswd(bool secure, std::string *user, std::string *password) override;
+  virtual bool showMsgBox(rfb::MsgBoxFlags flags, const char *title, const char *text) override;
 
 public:
   double decodeTime;
@@ -169,7 +171,7 @@ void DummyOutStream::overrun(size_t needed)
 {
   flush();
   if (avail() < needed)
-    throw rdr::Exception("Insufficient dummy output buffer");
+    throw std::out_of_range("Insufficient dummy output buffer");
 }
 
 CConn::CConn(const char *filename)
@@ -189,7 +191,7 @@ CConn::CConn(const char *filename)
   // Nor the frame buffer size and format
   rfb::PixelFormat pf;
   pf.parse(format);
-  setPixelFormat(pf);
+  server.setPF(pf);
   setDesktopSize(width, height);
 
   sc = new SConn();
@@ -279,6 +281,15 @@ void CConn::serverCutText(const char*)
 {
 }
 
+void CConn::getUserPasswd(bool, std::string *, std::string *)
+{
+}
+
+bool CConn::showMsgBox(rfb::MsgBoxFlags, const char *, const char *)
+{
+    return true;
+}
+
 Manager::Manager(class rfb::SConnection *conn_) :
   EncodeManager(conn_)
 {
@@ -361,17 +372,17 @@ static struct stats runTest(const char *fn)
 
   try {
     cc = new CConn(fn);
-  } catch (rdr::Exception& e) {
-    fprintf(stderr, "Failed to open rfb file: %s\n", e.str());
+  } catch (std::exception& e) {
+    fprintf(stderr, "Failed to open rfb file: %s\n", e.what());
     exit(1);
   }
 
   try {
     while (true)
       cc->processMsg();
-  } catch (rdr::EndOfStream& e) {
-  } catch (rdr::Exception& e) {
-    fprintf(stderr, "Failed to run rfb file: %s\n", e.str());
+  } catch (rdr::end_of_stream& e) {
+  } catch (std::exception& e) {
+    fprintf(stderr, "Failed to run rfb file: %s\n", e.what());
     exit(1);
   }
 

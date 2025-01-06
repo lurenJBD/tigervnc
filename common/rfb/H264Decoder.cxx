@@ -18,6 +18,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #define MAX_H264_INSTANCES 64
 
 #include <deque>
@@ -26,7 +30,6 @@
 #include <rdr/InStream.h>
 #include <rdr/OutStream.h>
 #include <rfb/LogWriter.h>
-#include <rfb/Exception.h>
 #include <rfb/H264Decoder.h>
 #include <rfb/H264DecoderContext.h>
 
@@ -124,12 +127,12 @@ void H264Decoder::decodeRect(const Rect& r, const uint8_t* buffer,
     }
     ctx = H264DecoderContext::createContext(r);
     if (!ctx)
-      throw Exception("H264Decoder: Context not be created");
+      throw std::runtime_error("H264Decoder: Context not be created");
     contexts.push_back(ctx);
   }
 
   if (!ctx->isReady())
-    throw Exception("H264Decoder: Context is not ready");
+    throw std::runtime_error("H264Decoder: Context is not ready");
 
   if (reset & resetContext)
     ctx->reset();

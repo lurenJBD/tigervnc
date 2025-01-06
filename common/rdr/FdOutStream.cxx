@@ -117,7 +117,7 @@ size_t FdOutStream::writeFd(const uint8_t* data, size_t length)
   } while (n < 0 && errorNumber == EINTR);
 
   if (n < 0)
-    throw SystemException("select", errorNumber);
+    throw socket_error("select", errorNumber);
 
   if (n == 0)
     return 0;
@@ -134,7 +134,7 @@ size_t FdOutStream::writeFd(const uint8_t* data, size_t length)
   } while (n < 0 && (errorNumber == EINTR));
 
   if (n < 0)
-    throw SystemException("write", errorNumber);
+    throw socket_error("write", errorNumber);
 
   gettimeofday(&lastWrite, nullptr);
 

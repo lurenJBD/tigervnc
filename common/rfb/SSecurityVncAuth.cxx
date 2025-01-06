@@ -83,7 +83,7 @@ bool SSecurityVncAuth::processMsg()
   if (!sentChallenge) {
     rdr::RandomStream rs;
     if (!rs.hasData(vncAuthChallengeSize))
-      throw Exception("Could not generate random data for VNC auth challenge");
+      throw std::runtime_error("Could not generate random data for VNC auth challenge");
     rs.readBytes(challenge, vncAuthChallengeSize);
     os->writeBytes(challenge, vncAuthChallengeSize);
     os->flush();
@@ -100,7 +100,7 @@ bool SSecurityVncAuth::processMsg()
   pg->getVncAuthPasswd(&passwd, &passwdReadOnly);
 
   if (passwd.empty())
-    throw AuthFailureException("No password configured for VNC Auth");
+    throw std::runtime_error("No password configured");
 
   if (verifyResponse(passwd.c_str())) {
     accessRights = AccessDefault;
@@ -113,7 +113,7 @@ bool SSecurityVncAuth::processMsg()
     return true;
   }
 
-  throw AuthFailureException();
+  throw auth_error("Authentication failed");
 }
 
 VncAuthPasswdParameter::VncAuthPasswdParameter(const char* name_,
@@ -132,17 +132,17 @@ void VncAuthPasswdParameter::getVncAuthPasswd(std::string *password, std::string
     if (passwdFile) {
       const char *fname = *passwdFile;
       if (!fname[0]) {
-        vlog.info("neither %s nor %s params set", getName(), passwdFile->getName());
+        vlog.info("Neither %s nor %s params set", getName(), passwdFile->getName());
         return;
       }
 
       FILE* fp = fopen(fname, "r");
       if (!fp) {
-        vlog.error("opening password file '%s' failed", fname);
+        vlog.error("Opening password file '%s' failed", fname);
         return;
       }
 
-      vlog.debug("reading password file");
+      vlog.debug("Reading password file");
       obfuscated.resize(8);
       obfuscated.resize(fread(obfuscated.data(), 1, 8, fp));
       obfuscatedReadOnly.resize(8);

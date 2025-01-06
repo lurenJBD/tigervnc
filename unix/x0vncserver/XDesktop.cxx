@@ -31,7 +31,6 @@
 #include <network/Socket.h>
 
 #include <rfb/LogWriter.h>
-#include <rfb/Exception.h>
 
 #include <x0vncserver/XDesktop.h>
 
@@ -45,6 +44,7 @@
 #endif
 #ifdef HAVE_XFIXES
 #include <X11/extensions/Xfixes.h>
+#include <X11/Xatom.h>
 #endif
 #ifdef HAVE_XRANDR
 #include <X11/extensions/Xrandr.h>
@@ -70,7 +70,7 @@ BoolParameter rawKeyboard("RawKeyboard",
                           "avoid mapping them to the current keyboard "
                           "layout", false);
 IntParameter queryConnectTimeout("QueryConnectTimeout",
-                                 "Number of seconds to show the Accept Connection dialog before "
+                                 "Number of seconds to show the 'Accept connection' dialog before "
                                  "rejecting the connection",
                                  10);
 
@@ -83,7 +83,7 @@ static const char * ledNames[XDESKTOP_N_LEDS] = {
 
 XDesktop::XDesktop(Display* dpy_, Geometry *geometry_)
   : dpy(dpy_), geometry(geometry_), pb(nullptr), server(nullptr),
-    queryConnectDialog(nullptr), queryConnectSock(nullptr),
+    queryConnectDialog(nullptr), queryConnectSock(nullptr), selection(dpy_, this),
     oldButtonMask(0), haveXtest(false), haveDamage(false),
     maxButtons(0), running(false), ledMasks(), ledState(0),
     codeMap(nullptr), codeMapLen(0)
@@ -97,7 +97,7 @@ XDesktop::XDesktop(Display* dpy_, Geometry *geometry_)
   if (!XkbQueryExtension(dpy, &xkbOpcode, &xkbEventBase,
                          &xkbErrorBase, &major, &minor)) {
     vlog.error("XKEYBOARD extension not present");
-    throw Exception();
+    throw std::runtime_error("XKEYBOARD extension not present");
   }
 
   XkbSelectEvents(dpy, XkbUseCoreKbd, XkbIndicatorStateNotifyMask,
@@ -181,10 +181,15 @@ XDesktop::XDesktop(Display* dpy_, Geometry *geometry_)
   if (XFixesQueryExtension(dpy, &xfixesEventBase, &xfixesErrorBase)) {
     XFixesSelectCursorInput(dpy, DefaultRootWindow(dpy),
                             XFixesDisplayCursorNotifyMask);
+
+    XFixesSelectSelectionInput(dpy, DefaultRootWindow(dpy), XA_PRIMARY,
+                               XFixesSetSelectionOwnerNotifyMask);
+    XFixesSelectSelectionInput(dpy, DefaultRootWindow(dpy), xaCLIPBOARD,
+                               XFixesSetSelectionOwnerNotifyMask);
   } else {
 #endif
     vlog.info("XFIXES extension not present");
-    vlog.info("Will not be able to display cursors");
+    vlog.info("Will not be able to display cursors or monitor clipboard");
 #ifdef HAVE_XFIXES
   }
 #endif
@@ -242,9 +247,9 @@ void XDesktop::init(VNCServer* vs)
 void XDesktop::start()
 {
   // Determine actual number of buttons of the X pointer device.
-  unsigned char btnMap[8];
-  int numButtons = XGetPointerMapping(dpy, btnMap, 8);
-  maxButtons = (numButtons > 8) ? 8 : numButtons;
+  unsigned char btnMap[9];
+  int numButtons = XGetPointerMapping(dpy, btnMap, 9);
+  maxButtons = (numButtons > 9) ? 9 : numButtons;
   vlog.info("Enabling %d button%s of X pointer device",
             maxButtons, (maxButtons != 1) ? "s" : "");
 
@@ -342,7 +347,7 @@ void XDesktop::queryConnection(network::Socket* sock,
   queryConnectDialog->map();
 }
 
-void XDesktop::pointerEvent(const Point& pos, int buttonMask) {
+void XDesktop::pointerEvent(const Point& pos, uint16_t buttonMask) {
 #ifdef HAVE_XTEST
   if (!haveXtest) return;
   XTestFakeMotionEvent(dpy, DefaultScreen(dpy),
@@ -406,6 +411,43 @@ KeyCode XDesktop::XkbKeysymToKeycode(KeySym keysym) {
   return keycode;
 }
 
+/*
+ * Keeps the list in LRU order by moving the used key to front of the list.
+ */
+static void onKeyUsed(std::list<AddedKeySym> &list, KeyCode usedKeycode) {
+  if (list.empty() || list.front().keycode == usedKeycode)
+    return;
+
+  std::list<AddedKeySym>::iterator it = list.begin();
+  ++it;
+  for (; it != list.end(); ++it) {
+    AddedKeySym item = *it;
+    if (item.keycode == usedKeycode) {
+      list.erase(it);
+      list.push_front(item);
+      break;
+    }
+  }
+}
+
+/*
+ * Returns keycode of oldest item from list of manually added keysyms.
+ * The item is removed from the list.
+ * Returns 0 if no usable keycode is found.
+ */
+KeyCode XDesktop::getReusableKeycode(XkbDescPtr xkb) {
+  while (!addedKeysyms.empty()) {
+    AddedKeySym last = addedKeysyms.back();
+    addedKeysyms.pop_back();
+
+    // Make sure someone else hasn't modified the key
+    if (XkbKeyNumGroups(xkb, last.keycode) > 0 &&
+      XkbKeySymsPtr(xkb, last.keycode)[0] == last.keysym)
+      return last.keycode;
+  }
+  return 0;
+}
+
 KeyCode XDesktop::addKeysym(KeySym keysym)
 {
   int types[1];
@@ -426,6 +468,9 @@ KeyCode XDesktop::addKeysym(KeySym keysym)
   }
 
   if (key < xkb->min_key_code)
+    key = getReusableKeycode(xkb);
+
+  if (!key)
     return 0;
 
   memset(&changes, 0, sizeof(changes));
@@ -452,8 +497,9 @@ KeyCode XDesktop::addKeysym(KeySym keysym)
   changes.num_key_syms = 1;
 
   if (XkbChangeMap(dpy, xkb, &changes)) {
-    vlog.info("Added unknown keysym %s to keycode %d", XKeysymToString(keysym), key);
-    addedKeysyms[keysym] = key;
+    vlog.info("Added unknown keysym XK_%s (0x%04x) to keycode %d",
+              XKeysymToString(keysym), (unsigned)keysym, key);
+    addedKeysyms.push_front({ syms[0], (KeyCode)key });
     return key;
   }
 
@@ -472,21 +518,17 @@ void XDesktop::deleteAddedKeysyms() {
 
   KeyCode lowestKeyCode = xkb->max_key_code;
   KeyCode highestKeyCode = xkb->min_key_code;
-  std::map<KeySym, KeyCode>::iterator it;
-  for (it = addedKeysyms.begin(); it != addedKeysyms.end(); it++) {
-    if (XkbKeyNumGroups(xkb, it->second) != 0) {
-      // Check if we are removing keysym we added ourself
-      if (XkbKeysymToKeycode(it->first) != it->second)
-        continue;
+  KeyCode keyCode = getReusableKeycode(xkb);
+  while (keyCode != 0) {
+    XkbChangeTypesOfKey(xkb, keyCode, 0, XkbGroup1Mask, nullptr, &changes);
 
-      XkbChangeTypesOfKey(xkb, it->second, 0, XkbGroup1Mask, nullptr, &changes);
+    if (keyCode < lowestKeyCode)
+      lowestKeyCode = keyCode;
 
-      if (it->second < lowestKeyCode)
-        lowestKeyCode = it->second;
+    if (keyCode > highestKeyCode)
+      highestKeyCode = keyCode;
 
-      if (it->second > highestKeyCode)
-        highestKeyCode = it->second;
-    }
+    keyCode = getReusableKeycode(xkb);
   }
 
   // Did we actually find something to remove?
@@ -497,8 +539,6 @@ void XDesktop::deleteAddedKeysyms() {
   changes.first_key_sym = lowestKeyCode;
   changes.num_key_syms = highestKeyCode - lowestKeyCode + 1;
   XkbChangeMap(dpy, xkb, &changes);
-
-  addedKeysyms.clear();
 }
 
 KeyCode XDesktop::keysymToKeycode(KeySym keysym) {
@@ -552,6 +592,9 @@ void XDesktop::keyEvent(uint32_t keysym, uint32_t xtcode, bool down) {
   else
     pressedKeys.erase(keysym);
 
+  if (down)
+    onKeyUsed(addedKeysyms, keycode);
+
   vlog.debug("%d %s", keycode, down ? "down" : "up");
 
   XTestFakeKeyEvent(dpy, keycode, down, CurrentTime);
@@ -560,9 +603,6 @@ void XDesktop::keyEvent(uint32_t keysym, uint32_t xtcode, bool down) {
   (void)xtcode;
   (void)down;
 #endif
-}
-
-void XDesktop::clientCutText(const char* /*str*/) {
 }
 
 ScreenSet XDesktop::computeScreenLayout()
@@ -856,6 +896,20 @@ bool XDesktop::handleGlobalEvent(XEvent* ev) {
       return false;
 
     return setCursor();
+  }
+  else if (ev->type == xfixesEventBase + XFixesSelectionNotify) {
+    XFixesSelectionNotifyEvent* sev = (XFixesSelectionNotifyEvent*)ev;
+
+    if (!running)
+      return true;
+
+    if (sev->subtype != XFixesSetSelectionOwnerNotify)
+      return false;
+
+    selection.handleSelectionOwnerChange(sev->owner, sev->selection,
+                                         sev->timestamp);
+
+    return true;
 #endif
 #ifdef HAVE_XRANDR
   } else if (ev->type == Expose) {
@@ -994,8 +1048,8 @@ bool XDesktop::setCursor()
   try {
     server->setCursor(cim->width, cim->height, Point(cim->xhot, cim->yhot),
                       cursorData);
-  } catch (rdr::Exception& e) {
-    vlog.error("XserverDesktop::setCursor: %s",e.str());
+  } catch (std::exception& e) {
+    vlog.error("XserverDesktop::setCursor: %s",e.what());
   }
 
   delete [] cursorData;
@@ -1003,3 +1057,28 @@ bool XDesktop::setCursor()
   return true;
 }
 #endif
+
+// X selection availability changed, let VNC clients know
+void XDesktop::handleXSelectionAnnounce(bool available) {
+  server->announceClipboard(available);
+}
+
+// A VNC client wants data, send request to selection owner
+void XDesktop::handleClipboardRequest() { 
+  selection.requestSelectionData(); 
+}
+
+// Data is available, send it to clients
+void XDesktop::handleXSelectionData(const char* data) {
+  server->sendClipboardData(data);
+}
+
+// When a client says it has clipboard data, request it 
+void XDesktop::handleClipboardAnnounce(bool available) {
+   if(available) server->requestClipboard();
+}
+
+// Client has sent the data
+void XDesktop::handleClipboardData(const char* data) {
+  if (data) selection.handleClientClipboardData(data);
+}

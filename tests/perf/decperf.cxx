@@ -68,7 +68,6 @@ public:
   ~CConn();
 
   void initDone() override;
-  void setPixelFormat(const rfb::PixelFormat& pf) override;
   void setCursor(int, int, const rfb::Point&, const uint8_t*) override;
   void setCursorPos(const rfb::Point&) override;
   void framebufferUpdateStart() override;
@@ -76,6 +75,8 @@ public:
   void setColourMapEntries(int, int, uint16_t*) override;
   void bell() override;
   void serverCutText(const char*) override;
+  virtual void getUserPasswd(bool secure, std::string *user, std::string *password) override;
+  virtual bool showMsgBox(rfb::MsgBoxFlags flags, const char *title, const char *text) override;
 
 public:
   double cpuTime;
@@ -83,6 +84,7 @@ public:
 protected:
   rdr::FileInStream *in;
   DummyOutStream *out;
+
 };
 
 DummyOutStream::DummyOutStream()
@@ -108,7 +110,7 @@ void DummyOutStream::overrun(size_t needed)
 {
   flush();
   if (avail() < needed)
-    throw rdr::Exception("Insufficient dummy output buffer");
+    throw std::out_of_range("Insufficient dummy output buffer");
 }
 
 CConn::CConn(const char *filename)
@@ -137,12 +139,6 @@ void CConn::initDone()
   setFramebuffer(new rfb::ManagedPixelBuffer(filePF,
                                              server.width(),
                                              server.height()));
-}
-
-void CConn::setPixelFormat(const rfb::PixelFormat& /*pf*/)
-{
-  // Override format
-  CConnection::setPixelFormat(filePF);
 }
 
 void CConn::setCursor(int, int, const rfb::Point&, const uint8_t*)
@@ -181,6 +177,15 @@ void CConn::serverCutText(const char*)
 {
 }
 
+void CConn::getUserPasswd(bool, std::string *, std::string *)
+{
+}
+
+bool CConn::showMsgBox(rfb::MsgBoxFlags, const char *, const char *)
+{
+    return true;
+}
+
 struct stats
 {
   double decodeTime;
@@ -197,17 +202,17 @@ static struct stats runTest(const char *fn)
 
   try {
     cc = new CConn(fn);
-  } catch (rdr::Exception& e) {
-    fprintf(stderr, "Failed to open rfb file: %s\n", e.str());
+  } catch (std::exception& e) {
+    fprintf(stderr, "Failed to open rfb file: %s\n", e.what());
     exit(1);
   }
 
   try {
     while (true)
       cc->processMsg();
-  } catch (rdr::EndOfStream& e) {
-  } catch (rdr::Exception& e) {
-    fprintf(stderr, "Failed to run rfb file: %s\n", e.str());
+  } catch (rdr::end_of_stream& e) {
+  } catch (std::exception& e) {
+    fprintf(stderr, "Failed to run rfb file: %s\n", e.what());
     exit(1);
   }
 

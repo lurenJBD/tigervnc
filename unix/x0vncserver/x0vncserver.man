@@ -1,6 +1,6 @@
 .TH X0VNCSERVER 1 "" "TigerVNC" "TigerVNC Manual"
 .SH NAME
-x0vncserver \- TigerVNC Server for X displays
+x0vncserver \- TigerVNC server for X displays
 .SH SYNOPSIS
 .B x0vncserver
 .RI [ options ]
@@ -8,7 +8,7 @@ x0vncserver \- TigerVNC Server for X displays
 .B x0vncserver -version
 .SH DESCRIPTION
 .B x0vncserver
-is a TigerVNC Server which makes any X display remotely accessible via VNC,
+is a TigerVNC server which makes any X display remotely accessible via VNC,
 TigerVNC or compatible viewers.  Unlike \fBXvnc\fP(1), it does not create a
 virtual display.  Instead, it just shares an existing X server (typically,
 that one connected to the physical screen).
@@ -180,7 +180,7 @@ connections. Default is off.
 .
 .TP
 .B \-QueryConnectTimeout \fIseconds\fP
-Number of seconds to show the Accept Connection dialog before rejecting the
+Number of seconds to show the Accept connection dialog before rejecting the
 connection.  Default is \fB10\fP.
 .
 .TP
@@ -220,6 +220,27 @@ Accept pointer movement and button events from clients. Default is on.
 .TP
 .B \-AcceptSetDesktopSize
 Accept requests to resize the size of the desktop. Default is on.
+.
+.TP
+.B \-AcceptCutText
+Accept clipboard updates from clients. Default is on.
+.
+.TP
+.B \-SetPrimary
+Set the PRIMARY as well as the CLIPBOARD selection. Default is on.
+.
+.TP
+.B \-MaxCutText \fIbytes\fP
+The maximum permitted size of an incoming clipboard update.
+Default is \fB262144\fP.
+.
+.TP
+.B \-SendCutText
+Send clipboard changes to clients. Default is on.
+.
+.TP
+.B \-SendPrimary
+Send the PRIMARY as well as the CLIPBOARD selection to clients. Default is on.
 .
 .TP
 .B \-RemapKeys \fImapping
